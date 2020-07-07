@@ -163,7 +163,7 @@ public:
 
     autorelease_iterator< T >    begin()
     {
-        return( autorelease_iterator< T >(    ) );
+        return( autorelease_iterator< T >(  ) );
     }
 
     autorelease_iterator< T >    end()

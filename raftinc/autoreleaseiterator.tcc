@@ -21,7 +21,7 @@
 #define AUTORELEASEITERATOR_TCC  1
 
 #include <iterator>
-
+#include <
 //TODO, add enable_if to sensure AUTORELEASE object inherits from 
 //autorelease
 
@@ -48,28 +48,73 @@
  * sort. We'll also need to figure out how
  * to return a std::pair ref :). 
  */
+#include <cstdlib>
+#include <algorithm>
+#include <functional> 
 
 template < class T > class autorelease_iterator : 
-    public std::iterator< std::forward_iterator_tag, AUTORELASE_OBJECT::self_type >
+    public std::iterator< std::forward_iterator_tag, std::pair< T&, Buffer:Signal >
 {
 
-public:
-   explicit autorelease_iterator( ) 
+using auto_ret_pair_t = 
+    std::pair< std::reference_wrapper< T >, std::reference_wrapper< Buffer::Signal >
    
-   autorelease_iterator( portmap_t * port_map, std::size_t index );
 
-   autorelease_iterator& operator++() ;
+
+public:
+    constepxr
+    explicit autorelease_iterator(   T * const queue,
+                                     Buffer::Signal * const signal,
+                                     const std::size_t n_items,
+                                     const std::size_t queue_size,
+                                     const std::size_t crp
+                                     )  :   queue( queue ),
+                                            signal( signal ),
+                                            n_items( n_items ),
+                                            queue_size( queue_size ),
+                                            crp( crp ),
+                                            is_end( false )
+    {
+        //nothing here
+    }
+
+    constexpr
+    explicit autorelease_iterator( const T * const queue,
+                                   const bool is_end )  :   queue( queue ),
+                                                            is_end( is_end ){}
    
-   bool operator==(const autorelease_iterator& rhs) const; 
-   bool operator!=(const autorelease_iterator& rhs) const;
-   
-   FIFO& operator*() const;
-   
-   const std::string& name() const;
+
+    autorelease_iterator& operator++()
+    {
+        current_location = (index + crp) % queue_size;
+    }
+    
+    bool operator   ==  ( const autorelease_iterator& rhs ) const
+    {
+        
+    }
+
+    bool operator   !=  ( const autorelease_iterator& rhs ) const
+    {
+
+    }
+    
+    operator*() const
+    {
+
+    }
+    
+    const std::string& name() const;
 
 private:
-   using map_iterator_type = std::decay_t<decltype(begin(portmap_t::map))>;
+    std::size_t              current_location;
 
+    T    * const             queue;
+    Buffer::Signal * const   signal;
+    const std::size_t        n_items;
+    const std::size_t        queue_size;
+    const std::size_t        crp;
+    const bool               is_end;
 };
 
 #endif /* END AUTORELEASEITERATOR_TCC */
