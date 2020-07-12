@@ -30,15 +30,17 @@ class FIFO;
 class PortIterator : public std::iterator< std::forward_iterator_tag, FIFO >
 {
 public:
+   PortIterator() = default;
+
    explicit PortIterator( portmap_t * port_map );
    
    PortIterator( portmap_t * port_map, std::size_t index );
 
-   PortIterator& operator++() ;
+   PortIterator& operator++();
    
-   bool operator==(const PortIterator& rhs) const; 
-   bool operator!=(const PortIterator& rhs) const;
-   FIFO& operator*() const;
+   bool     operator==(const PortIterator& rhs) const; 
+   bool     operator!=(const PortIterator& rhs) const;
+   FIFO&    operator*() const;
    
    const std::string& name() const;
 

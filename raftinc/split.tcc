@@ -72,7 +72,7 @@ protected:
    {
       unlock_helper( input );
    }
-   method split_func;
+   method split_func( output );
 };
 } /** end namespace raft **/
 #endif /* END RAFTSPLIT_TCC */

@@ -1,9 +1,9 @@
 /**
- * roundrobin.hpp - 
+ * splitmethod.cpp - 
  * @author: Jonathan Beard
- * @version: Tue Oct 28 13:05:38 2014
+ * @version: Sat Jul 11 16:00:01 2020
  * 
- * Copyright 2014 Jonathan Beard
+ * Copyright 2020 Jonathan Beard
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,23 +17,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTROUNDROBIN_HPP
-#define RAFTROUNDROBIN_HPP  1
-
-#include "fifo.hpp"
-#include "port.hpp"
 #include "splitmethod.hpp"
 
-class roundrobin : public splitmethod 
+
+splitmethod::splitmethod( Port &port ) : _port( port ),
+                                         begin( _port.begin() ),
+                                         current( _port.begin() ),
+                                         end( _port.end() )
 {
-public:
-    roundrobin( Port &ports );
-    virtual ~roundrobin();
 
-protected:
-    virtual FIFO*  select_fifo( const functype type ) override;
-
-    virtual PortIterator& increment( PortIterator &current, PortIterator &begin, const PortIterator &end ) override;
-    
-};
-#endif /* END RAFTROUNDROBIN_HPP */
+}

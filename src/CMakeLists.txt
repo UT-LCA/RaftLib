@@ -35,6 +35,7 @@ set(CPP_SRC_FILES
     signal.cpp
     signaldata.cpp
     simpleschedule.cpp
+    splitmethod.cpp
     stdalloc.cpp
     submap.cpp
     systemsignalhandler.cpp

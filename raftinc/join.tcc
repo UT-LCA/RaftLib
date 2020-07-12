@@ -51,7 +51,7 @@ public:
       auto &output_port( output[ "0" ] );
       T &mem( output_port.template allocate< T >() );
       raft::signal temp_signal;
-      if( split_func.get( mem, temp_signal, input ) )
+      if( split_func.get( mem, temp_signal ) )
       {
          /** call push to release above allocated memory **/
          output_port.send( temp_signal );
@@ -80,7 +80,7 @@ protected:
       unlock_helper( input );
    }
 
-   method split_func;
+   method split_func    = { input };
 };
 }
 #endif /* END RAFTJOIN_TCC */

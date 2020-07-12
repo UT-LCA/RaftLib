@@ -35,25 +35,20 @@ class autoreleasebase;
 class splitmethod
 {
 public:
-   splitmethod()          = default;
-   virtual ~splitmethod() = default;
+    splitmethod( Port &port );
+    
+    virtual ~splitmethod()    = default;
 
-   template < class T /* item */,
-              typename std::enable_if<
-                        std::is_fundamental< T >::value >::type* = nullptr >
-      bool send( T &item, const raft::signal signal, Port &outputs )
-   {
-      auto * const fifo( select_fifo( outputs, sendtype ) );
-      if( fifo != nullptr )
-      {
-         fifo->push( item, signal );
-         return( true );
-      }
-      else
-      {
-         return( false );
-      }
-   }
+    template < class T /* item */,
+               typename std::enable_if<
+                         std::is_fundamental< T >::value >::type* = nullptr >
+       bool send( T &item, const raft::signal signal = raft::none )
+    {
+        auto const &fifo( select_fifo( ) );
+        //FIXME - check for space
+        fifo.push( item, signal );
+        return( true );
+    }
 
    /**
     * send - this version is intended for the peekrange object from
@@ -67,45 +62,35 @@ public:
               typename std::enable_if<
                        ! std::is_base_of< autoreleasebase,
                                         T >::value >::type* = nullptr >
-      bool send( T &range, Port &outputs )
+      bool send( T &range )
    {
-      auto * const fifo( select_fifo( outputs, sendtype ) );
-      if( fifo != nullptr )
-      {
-         const auto space_avail(
-            std::min( fifo->space_avail(), range.size() ) );
-
-         using index_type = std::remove_const_t<decltype(space_avail)>;
-         for( index_type i( 0 ); i < space_avail; i++ )
-         {
-            fifo->push( range[ i ].ele, range[ i ].sig );
-         }
-         return( true );
-      }
-      else
-      {
-         return( false );
-      }
+        auto const &fifo( select_fifo() );
+        const auto space_avail( std::min( fifo.space_avail(), range.size() ) );
+        using index_type = std::remove_const_t<decltype(space_avail)>;
+        for( index_type i( 0 ); i < space_avail; i++ )
+        {
+           fifo.push( range[ i ].ele, range[ i ].sig );
+        }
+        return( true );
    }
 
    template < class T /* item */ >
-      bool get( T &item, raft::signal &signal, Port &inputs )
+      bool get( T &item, raft::signal &signal )
    {
-      auto * const fifo( select_fifo( inputs, gettype ) );
-      if( fifo != nullptr )
-      {
-         fifo->pop< T >( item, &signal );
-         return( true );
-      }
-      else
-      {
-         return( false );
-      }
+        auto const &fifo( select_fifo() );
+        fifo->pop< T >( item, &signal );
+        return( true );
    }
 
 
 protected:
-   enum functype { sendtype, gettype };
-   virtual FIFO*  select_fifo( Port &port_list, const functype type ) = 0;
+    enum functype { sendtype, gettype };
+    
+    virtual FIFO&  select_fifo() = 0;
+
+
+    PortIterator        begin;    
+    PortIterator        current;
+    const PortIterator  end;
 };
 #endif /* END RAFTSPLITMETHOD_HPP */

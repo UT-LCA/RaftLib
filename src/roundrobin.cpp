@@ -1,32 +1,17 @@
 #include "roundrobin.hpp"
 
-roundrobin::roundrobin() : splitmethod()
+roundrobin::roundrobin( Port &port ) : splitmethod( port )
 {
 }
 
-roundrobin::~roundrobin()
-{
-}
 
-FIFO*  
-roundrobin::select_fifo( Port &port_list, const functype type )
+FIFO& 
+roundrobin::select_fifo(  )
 {
-   for( ;; )
-   {
-      for( auto &port : port_list )
-      {
-         /** 
-          * TODO, big assumption here is that 
-          * eventually a port will have space 
-          */
-         if( type == sendtype && port.space_avail() > 0 )
-         {
-            return( &( port ) );
-         }
-         if( type == gettype && port.size() > 0 )
-         {
-            return( &( port ) );
-         }
-      }
-   }
+    auto &output( (*current) );
+    if( ++current == end )
+    {
+        current = begin;
+    }
+    return( output );
 }

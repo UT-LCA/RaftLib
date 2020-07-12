@@ -161,6 +161,7 @@ public:
         }
     }
 
+#if 0
     autorelease_iterator< T >    begin()
     {
         return( autorelease_iterator< T >(  ) );
@@ -170,6 +171,7 @@ public:
     {
         return( autorelease_iterator< T >( (*this), 
     }
+#endif
 
    /**
     * getindex - returns index for foreach constructs,
