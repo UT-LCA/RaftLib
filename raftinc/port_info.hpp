@@ -70,8 +70,7 @@ struct PortInfo
     */
    void setFIFO( FIFO * const in );
    
-   FIFO            *fifo_a  = nullptr;
-   FIFO            *fifo_b  = nullptr;
+   FIFO            *fifo  = nullptr;
    /** 
     * the type of the port.  regardless of if the buffer itself
     * is impplemented or not. 

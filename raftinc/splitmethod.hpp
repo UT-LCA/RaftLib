@@ -44,10 +44,20 @@ public:
                          std::is_fundamental< T >::value >::type* = nullptr >
        bool send( T &item, const raft::signal signal = raft::none )
     {
-        auto const &fifo( select_fifo( ) );
-        //FIXME - check for space
+        bool ret_value( true );
+        auto &fifo( select_fifo( ret_value ) );
+        while( fifo.space_avail() == 0 /** single push **/ )
+        {
+            fifo = select_fifo( ret_value );
+            if( ! ret_value )
+            {
+                return( ret_value );
+            }
+        }
+        //data is there
         fifo.push( item, signal );
-        return( true );
+        //we're always returning true
+        return( ret_value );
     }
 
    /**
@@ -64,12 +74,31 @@ public:
                                         T >::value >::type* = nullptr >
       bool send( T &range )
    {
-        auto const &fifo( select_fifo() );
-        const auto space_avail( std::min( fifo.space_avail(), range.size() ) );
-        using index_type = std::remove_const_t<decltype(space_avail)>;
-        for( index_type i( 0 ); i < space_avail; i++ )
+        bool ret_value( true );
+        auto &fifo( select_fifo( ret_value ) );
+        const auto local_range_size( range.size() );
+        using index_type = std::remove_const_t< decltype( local_range_size ) >;
+        index_type i( 0 );
+        while( true )
         {
-           fifo.push( range[ i ].ele, range[ i ].sig );
+            const auto space_avail( 
+                std::min( fifo.space_avail(), local_range_size ) 
+            );
+            for( ; i < space_avail; i++ )
+            {
+               fifo.push( range[ i ].ele, range[ i ].sig );
+            }   
+            //more data in range, select another FIFO
+            if( i < local_range_size )
+            {
+                fifo = select_fifo( ret_value );
+                
+            }
+            //else no more data, i >= local_range_size, return
+            else
+            {
+                return( true );
+            }
         }
         return( true );
    }
@@ -77,20 +106,52 @@ public:
    template < class T /* item */ >
       bool get( T &item, raft::signal &signal )
    {
-        auto const &fifo( select_fifo() );
-        fifo->pop< T >( item, &signal );
-        return( true );
+        bool ret_value = true;
+        auto &fifo( select_fifo( ret_value ) );
+        /**
+         * implementing non-blocking spin
+         * note: ports will do yield at some
+         * point inside kernel if no data 
+         * continuously.
+         */
+        while( fifo.size() == 0 )
+        {
+            fifo = select_fifo( ret_value );
+            if( ! ret_value )
+            {
+                return( ret_value );
+            }
+        }
+        fifo.pop< T >( item, &signal );
+        return( ret_value  );
    }
 
 
 protected:
-    enum functype { sendtype, gettype };
-    
-    virtual FIFO&  select_fifo() = 0;
+    /**
+     * select_fifo - this function should return
+     * a valid FIFO object based on the implemented 
+     * policy. In order to use this effectively, this
+     * splitmethod object must be constructed with the
+     * correct port container, e.g., "input" or "output"
+     * @param  cont - bool value that is set to true or false
+     * if the implementing policy wants the caller to continue
+     * iterating/calling the select function or exit (when false)
+     * to try again later. 
+     * @return FIFO - valid port object chosen by implemented
+     * selection policy. 
+     */
+    virtual FIFO&  select_fifo( bool &cont ) = 0;
 
-
-    PortIterator        begin;    
-    PortIterator        current;
-    const PortIterator  end;
+    /**
+     * Note, we can't just keep the iterators since 
+     * the iterator bounds could change between 
+     * invocations.
+     */
+    Port &_port;
+    //these are initially uninitialized. 
+    PortIterator begin;
+    PortIterator current;
+    PortIterator end;
 };
 #endif /* END RAFTSPLITMETHOD_HPP */

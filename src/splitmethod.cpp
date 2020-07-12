@@ -18,12 +18,9 @@
  * limitations under the License.
  */
 #include "splitmethod.hpp"
+#include "port.hpp"
 
-
-splitmethod::splitmethod( Port &port ) : _port( port ),
-                                         begin( _port.begin() ),
-                                         current( _port.begin() ),
-                                         end( _port.end() )
+splitmethod::splitmethod( Port &port ) : _port( port ) 
 {
 
 }

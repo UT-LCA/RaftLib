@@ -21,6 +21,7 @@
 #include "port_info.hpp"
 #include "portmap_t.hpp"
 #include "portiterator.hpp"
+#include <cassert>
 
 PortIterator::PortIterator( portmap_t * const port_map )
 	: map_iterator(port_map->map.begin())
@@ -34,6 +35,18 @@ PortIterator::PortIterator( portmap_t * const port_map,
         ? port_map->map.end()
         : std::next(port_map->map.begin(), index) )
 {
+}
+    
+PortIterator::PortIterator( const PortIterator &other )
+{
+    map_iterator = other.map_iterator;
+}
+   
+PortIterator& 
+PortIterator::operator= ( const PortIterator &other )
+{
+    map_iterator = std::move( other.map_iterator );
+    return( (*this) );
 }
 
 PortIterator&

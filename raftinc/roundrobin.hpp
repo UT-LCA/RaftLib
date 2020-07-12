@@ -27,13 +27,28 @@
 class roundrobin : public splitmethod 
 {
 public:
+    /**
+     * default constructor for roundrobin scheduling
+     * policy.
+     * @param Port &ports - either input or output
+     */
     roundrobin( Port &ports );
-    virtual ~roundrobin();
+    /**
+     * default destructor, doesn't 
+     * do too much in this case. 
+     */
+    virtual ~roundrobin() = default;
 
 protected:
-    virtual FIFO*  select_fifo( const functype type ) override;
-
-    virtual PortIterator& increment( PortIterator &current, PortIterator &begin, const PortIterator &end ) override;
-    
+    /**
+     * select_fifo - this function should return
+     * a valid FIFO object based on the implemented 
+     * policy. In order to use this effectively, this
+     * splitmethod object must be constructed with the
+     * correct port container, e.g., "input" or "outptut"
+     * @return FIFO - valid port object chosen by implemented
+     * selection policy. 
+     */
+    virtual FIFO&  select_fifo( bool &cont ) override;
 };
 #endif /* END RAFTROUNDROBIN_HPP */

@@ -20,6 +20,8 @@
 #ifndef RAFTAUTORELEASEBASE_HPP
 #define RAFTAUTORELEASEBASE_HPP  1
 
+#include "signal.hpp"
+
 /**
  * this is used by the autorelease objects so that index operator []
  * can return access to both the signal and the element at that index

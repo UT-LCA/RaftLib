@@ -11,8 +11,10 @@ set( TESTAPPS allocate
      partitionTest parallel peek 
      bracketsTest uniform chain 
      splitchain staticLongSplitChain 
-     staticSplitJoin staticSplitChainJoin 
-     staticJoin staticContJoin 
+     staticSplitJoin 
+     staticSplitChainJoin 
+     staticJoin 
+     staticContJoin 
      fitInCacheLine
      isExtClass
      doesntFitInCacheLine

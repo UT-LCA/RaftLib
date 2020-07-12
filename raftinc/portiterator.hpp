@@ -30,19 +30,30 @@ class FIFO;
 class PortIterator : public std::iterator< std::forward_iterator_tag, FIFO >
 {
 public:
-   PortIterator() = default;
+    /**
+     * might seem like you don't need the default 
+     * one, but think again, it's definitely needed 
+     * for things like the roundrobin policies. 
+     */
+    PortIterator() = default;
 
-   explicit PortIterator( portmap_t * port_map );
-   
-   PortIterator( portmap_t * port_map, std::size_t index );
+    explicit PortIterator( portmap_t * port_map );
+    
+    PortIterator( portmap_t * port_map, std::size_t index );
 
-   PortIterator& operator++();
-   
-   bool     operator==(const PortIterator& rhs) const; 
-   bool     operator!=(const PortIterator& rhs) const;
-   FIFO&    operator*() const;
-   
-   const std::string& name() const;
+    PortIterator( const PortIterator &other );
+    
+    PortIterator& operator++();
+
+     
+
+    PortIterator& operator=( const PortIterator &other );
+    
+    bool     operator==(const PortIterator& rhs) const; 
+    bool     operator!=(const PortIterator& rhs) const;
+    FIFO&    operator*() const;
+    
+    const std::string& name() const;
 
 private:
    using map_iterator_type = std::decay_t<decltype(begin(portmap_t::map))>;

@@ -22,8 +22,7 @@ PortInfo::PortInfo( const std::type_info &the_type,
 
 PortInfo::PortInfo( const PortInfo &other ) : type( other.type )
 {
-   fifo_a         = other.fifo_a;
-   fifo_b         = other.fifo_b;
+   fifo           = other.fifo;
    my_kernel      = other.my_kernel;
    my_name        = other.my_name;
    other_kernel   = other.other_kernel;
@@ -44,23 +43,17 @@ PortInfo::PortInfo( const PortInfo &other ) : type( other.type )
 FIFO* 
 PortInfo::getFIFO()
 {
-   struct{
-      FIFO *a;
-      FIFO *b;
-   }copy = { fifo_a, fifo_b };
-   /** for most architectures that don't need this, it'll be optimized out after the first iteration **/
-   while( copy.a != copy.b )
-   {
-      copy.a = fifo_a;
-      copy.b = fifo_b;
-   }
-   return( copy.a );
+    /**
+     * do not assert fifo != nullptr as
+     * it should actually equal nullptr
+     * before it's initialized. 
+     */
+    return( fifo );
 }
 
 void 
 PortInfo::setFIFO( FIFO * const in )
 {
-   assert( in != nullptr );
-   fifo_a = in;
-   fifo_b = in;
+    assert( in != nullptr );
+    fifo = in;
 }
