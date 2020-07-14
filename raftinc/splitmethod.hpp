@@ -74,8 +74,6 @@ public:
                                         T >::value >::type* = nullptr >
       bool send( T &range )
    {
-        bool ret_value( true );
-        auto &fifo( select_fifo( ret_value ) );
         const auto local_range_size( range.size() );
         using index_type = std::remove_const_t< decltype( local_range_size ) >;
         index_type i( 0 );
@@ -106,24 +104,13 @@ public:
    template < class T /* item */ >
       bool get( T &item, raft::signal &signal )
    {
-        bool ret_value = true;
-        auto &fifo( select_fifo( ret_value ) );
-        /**
-         * implementing non-blocking spin
-         * note: ports will do yield at some
-         * point inside kernel if no data 
-         * continuously.
-         */
-        while( fifo.size() == 0 )
+        auto *fifo( select_input_fifo( 1 ) );
+        if( fifo == nullptr )
         {
-            fifo = select_fifo( ret_value );
-            if( ! ret_value )
-            {
-                return( ret_value );
-            }
+            return( false );
         }
-        fifo.pop< T >( item, &signal );
-        return( ret_value  );
+        fifo->pop< T >( item, &signal );
+        return( true );
    }
 
 
@@ -141,7 +128,9 @@ protected:
      * @return FIFO - valid port object chosen by implemented
      * selection policy. 
      */
-    virtual FIFO&  select_fifo( bool &cont ) = 0;
+    virtual FIFO* select_input_fifo ( const std::size_t nitems ) = 0;
+
+    virtual FIFO* select_output_fifo( const std::size_t nitems ) = 0;
 
     /**
      * Note, we can't just keep the iterators since 

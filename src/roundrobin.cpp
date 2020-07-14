@@ -14,17 +14,18 @@ roundrobin::select_fifo( bool &cont )
 
     if( begin != tmp_begin  || end != tmp_end )
     {
-        std::cout << "here\n";
         //just reset all positions
         begin   = tmp_begin;
         current = tmp_begin;
         end     = tmp_end;
+        //typically just done once
     }
 
     auto &output( (*current) );
     if( ++current == end )
     {
         current = begin;
+        //go back to begin
     }
     return( output );
 }

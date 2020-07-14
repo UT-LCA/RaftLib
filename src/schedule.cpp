@@ -162,7 +162,6 @@ Schedule::kernelHasInputData( raft::kernel *kernel )
                   return( true );
                }
             }
-            return( false );
         }
         break;
         case( raft::all_port ):
