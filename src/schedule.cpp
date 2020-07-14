@@ -162,6 +162,7 @@ Schedule::kernelHasInputData( raft::kernel *kernel )
                   return( true );
                }
             }
+            return( false );
         }
         break;
         case( raft::all_port ):
@@ -225,7 +226,9 @@ Schedule::kernelRun( raft::kernel * const kernel,
     * must recheck data items again after port valid check, there could
     * have been a push between these two conditional statements.
     */
-   if(  kernelHasNoInputPorts( kernel ) && ! kernelHasInputData( kernel ) )
+   const auto noPorts( kernelHasNoInputPorts( kernel ) );
+   const auto noData( ! kernelHasInputData( kernel ) );
+   if(  noPorts && noData )
    {
       invalidateOutputPorts( kernel );
       finished = true;

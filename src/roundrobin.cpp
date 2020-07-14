@@ -24,7 +24,6 @@ roundrobin::select_fifo( bool &cont )
     auto &output( (*current) );
     if( ++current == end )
     {
-        cont = false;
         current = begin;
     }
     return( output );
