@@ -5,27 +5,42 @@ roundrobin::roundrobin( Port &port ) : splitmethod( port )
 }
 
 
-FIFO& 
-roundrobin::select_fifo( bool &cont )
+FIFO* 
+splitmethod::select_input_fifo ( const std::size_t nitems )
 {
-    cont = true;
-    const auto tmp_begin = _port.begin();
-    const auto tmp_end   = _port.end();
-
-    if( begin != tmp_begin  || end != tmp_end )
+    const auto _tmp_begin = _port.begin();
+    const auto _tmp_end   = _port.end();
+    if( _tmp_begin != begin || _tmp_end != end )
     {
-        //just reset all positions
-        begin   = tmp_begin;
-        current = tmp_begin;
-        end     = tmp_end;
-        //typically just done once
+        begin   = current = _tmp_begin;
+        end     =   _tmp_end;
     }
-
-    auto &output( (*current) );
-    if( ++current == end )
+    for( ; current != end; ++current )
+    {
+        if( (*current).size() > nitems )
+        {
+            const auto output = current;
+            ++current;
+            return( &(*output) );
+        }
+    }
+    if( current == end )
     {
         current = begin;
-        //go back to begin
     }
-    return( output );
+    /** 
+     * else, return nullptr. This function is a bit less than 
+     * ideal given at invocation the current iterator might 
+     * equal the end iterator, so, we'll fix that eventually,
+     * but before we do that I want to make sure there's not
+     * a far better way to do this even if we have to change 
+     * the internal interface a bit. 
+     */
+    return( nullptr );
+}
+
+FIFO* 
+splitmethod::select_output_fifo( const std::size_t nitems )
+{
+    return( nullptr );
 }

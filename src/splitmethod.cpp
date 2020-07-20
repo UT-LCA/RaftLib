@@ -24,3 +24,16 @@ splitmethod::splitmethod( Port &port ) : _port( port )
 {
 
 }
+    
+
+FIFO* 
+splitmethod::select_input_fifo ( const std::size_t nitems )
+{
+    return( nullptr );
+}
+
+FIFO* 
+splitmethod::select_output_fifo( const std::size_t nitems )
+{
+    return( nullptr );
+}

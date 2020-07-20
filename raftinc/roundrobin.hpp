@@ -49,6 +49,8 @@ protected:
      * @return FIFO - valid port object chosen by implemented
      * selection policy. 
      */
-    virtual FIFO&  select_fifo( bool &cont ) override;
+    virtual FIFO* select_input_fifo ( const std::size_t nitems ) = override;
+
+    virtual FIFO* select_output_fifo( const std::size_t nitems ) = override;
 };
 #endif /* END RAFTROUNDROBIN_HPP */

@@ -31,7 +31,6 @@
 
 class autoreleasebase;
 
-/** FIXME, it's relativly easy to do zero copy....so implement **/
 class splitmethod
 {
 public:
@@ -44,20 +43,15 @@ public:
                          std::is_fundamental< T >::value >::type* = nullptr >
        bool send( T &item, const raft::signal signal = raft::none )
     {
-        bool ret_value( true );
-        auto &fifo( select_fifo( ret_value ) );
-        while( fifo.space_avail() == 0 /** single push **/ )
+        auto *fifo( select_output_fifo( 1 ) );
+        if( fifo == nullptr )
         {
-            fifo = select_fifo( ret_value );
-            if( ! ret_value )
-            {
-                return( ret_value );
-            }
+            return( false );
         }
-        //data is there
+        //else, data is there
         fifo.push( item, signal );
         //we're always returning true
-        return( ret_value );
+        return( true );
     }
 
    /**
@@ -121,16 +115,14 @@ protected:
      * policy. In order to use this effectively, this
      * splitmethod object must be constructed with the
      * correct port container, e.g., "input" or "output"
-     * @param  cont - bool value that is set to true or false
-     * if the implementing policy wants the caller to continue
-     * iterating/calling the select function or exit (when false)
-     * to try again later. 
-     * @return FIFO - valid port object chosen by implemented
-     * selection policy. 
+     * @param - nitems to find, will return null if that
+     * amount of space isn't avail. 
+     * @return nullptr if no port avail, or valid FIFO pointer
+     * if there is a pointer with avail data. 
      */
-    virtual FIFO* select_input_fifo ( const std::size_t nitems ) = 0;
+    virtual FIFO* select_input_fifo ( const std::size_t nitems );
 
-    virtual FIFO* select_output_fifo( const std::size_t nitems ) = 0;
+    virtual FIFO* select_output_fifo( const std::size_t nitems );
 
     /**
      * Note, we can't just keep the iterators since 
