@@ -28,14 +28,24 @@
 #endif
 
 #define L1D_CACHE_LINE_SIZE 64
-
 #endif
+
+#ifndef L1D_VL_CACHE_LINE_SIZE
+/* L1D_VL_CACHE_LINE_SIZE = (cacheline size - control region size - signal size) */
+#define L1D_VL_CACHE_LINE_SIZE 62
+#endif
+
+
 /**
  * see if the given class/type fits within a single cache line
  */
 template < class T > 
 struct fits_in_cache_line : 
+#ifdef VL
+   std::integral_constant< bool, ( sizeof( T ) <= L1D_VL_CACHE_LINE_SIZE ) >{};
+#else
    std::integral_constant< bool, ( sizeof( T ) <= L1D_CACHE_LINE_SIZE ) >{};
+#endif
 
 /**
  * NOW FOR ALLOC CHECKS

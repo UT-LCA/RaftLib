@@ -33,6 +33,10 @@
 #include "port_info_types.hpp"
 #include "fifo.hpp"
 
+#ifdef VL   
+#include "vlhandle.hpp"
+#endif   
+
 namespace raft{
    class kernel;
 }
@@ -111,6 +115,9 @@ struct PortInfo
    void             *existing_buffer = nullptr;
    std::size_t       nitems          = 0;
    std::size_t       start_index     = 0;
-   std::size_t       fixed_buffer_size = 0;   
+   std::size_t       fixed_buffer_size = 0;
+#ifdef VL   
+   VLHandle*         vlhptr;
+#endif   
 };
 #endif /* END RAFTPORT_INFO_HPP */

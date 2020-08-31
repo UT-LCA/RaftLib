@@ -35,9 +35,11 @@
 #include "blocked.hpp"
 #include "signalvars.hpp"
 #include "alloc_traits.tcc"
-
-
 #include "defs.hpp"
+#ifdef VL
+#include "vl.h"
+#include "vlhandle.hpp"
+#endif
 
 /** pre-declare Schedule class **/
 class Schedule;
@@ -534,7 +536,25 @@ public:
     * @return bool - true if invalid
     */
    virtual bool is_invalid() = 0;
+#ifdef VL   
+   void open_vl ( VLHandle* vlhptr, bool isProducer)
+   {
+     (this)->vlhptr     = vlhptr;
+     (this)->isProducer = isProducer;
+     if ( (this)->isProducer ) {
+       open_byte_vl_as_producer( (this)->vlhptr->vl_fd, &((this)->endpt), 1 );
+       (this)->vlhptr->valid_count.fetch_add(1, std::memory_order_relaxed);
+     } else {
+       open_byte_vl_as_consumer( (this)->vlhptr->vl_fd, &((this)->endpt), 1 );
+     }
+   }
+#endif
 protected:
+#ifdef VL   
+    VLHandle*   vlhptr;
+    vlendpt_t   endpt;
+    bool        isProducer;
+#endif    
    /**
     * setPtrMap - 
     */

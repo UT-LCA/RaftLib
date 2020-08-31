@@ -1,0 +1,59 @@
+/**
+ * vlalloc.hpp - simple allocation, just initializes the FIFO with a 
+ * fixed size buffer (512 items) with an alignment of 16-bytes.  This
+ * can easily be changed by changing the constants below.  
+ * @author:  Ashen Ekanayake
+ * @version: Sat Sep 20 19:56:49 2014
+ * 
+ * Copyright 2014 Jonathan Beard
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#ifdef VL
+#ifndef RAFTVLALLOC_HPP
+#define RAFTVLALLOC_HPP  1
+#include "allocate.hpp"
+
+namespace raft
+{
+    class map;
+}
+
+class vlalloc : public Allocate
+{
+public:
+   
+   /**
+    * vlalloc - default constructor, calls base allocate
+    * constructor of Allcoate which sets the map object.  
+    * After setting this object loose in a thread, the notReady()
+    * function must be called so that the queue sees fully
+    * allocated buffers as opposed ot null objects.
+    * @param map - Map&, map with full application
+    * @param exit_alloc - bool whose value is set by the map object
+    * owning this one.  Controls when the loop within the run thread
+    * is exited.
+    */
+   vlalloc( raft::map &map, volatile bool &exit_alloc  );
+   /**
+    * destructor, doesn't really do much at he moment.
+    */
+   virtual ~vlalloc();
+   /**
+    * run - call within a thread, internally we could have a loop before exiting 
+    * but this version simply allocates and exits.  
+    */
+   virtual void run();
+};
+#endif /* END RAFTSTDALLOC_HPP */
+#endif /* VL */

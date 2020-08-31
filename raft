@@ -33,6 +33,10 @@
 #include "./raftinc/stdalloc.hpp"
 #include "./raftinc/rafttypes.hpp"
 #include "./raftinc/kernel_all.hpp"
+#ifdef VL
+#include "./raftinc/vlalloc.hpp"
+#include "./raftinc/vlhandle.hpp"
+#endif
 
 /** parallel headers **/
 #include "./raftinc/parallelk.hpp"
@@ -64,7 +68,9 @@
 #include "./raftinc/ringbufferbase.tcc"
 #include "./raftinc/ringbufferheap.tcc"
 #include "./raftinc/ringbufferinfinite.tcc"
-
+#ifdef VL
+#include "./raftinc/fifo_vl.tcc"
+#endif
 #include "./raftinc/lambdak.tcc"
 
 /** exceptions **/

@@ -61,6 +61,12 @@ foreach( APP ${TESTAPPS} )
                                      ${CMAKE_THREAD_LIBS_INIT} 
                                      ${CMAKE_QTHREAD_LIBS}
                                      )
+ if( VL_LIB )                                 
+ target_link_libraries( ${APP} ${VL_LIB} )
+ endif( VL_LIB )
+ if( M5_LIB )                                 
+     target_link_libraries( ${APP} ${M5_LIB} )
+ endif( M5_LIB )
  add_test( NAME "${APP}_test" COMMAND ${APP} )
 endforeach( APP ${TESTAPPS} )
 

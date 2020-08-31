@@ -4,9 +4,11 @@
 namespace Type{
    enum RingBufferType { Heap, 
                          SharedMemory, 
-                         TCP, 
-                         Infinite, 
+                         TCP,
+                         VirtualLink,
+                         Infinite,
                          N };
+
 }
    
    enum Direction { Producer, Consumer };

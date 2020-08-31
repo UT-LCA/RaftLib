@@ -40,6 +40,13 @@ set(CPP_SRC_FILES
     systemsignalhandler.cpp
 )
 
+if( VL_LIB )
+    set(CPP_SRC_FILES
+        ${CPP_SRC_FILES}
+        vlalloc.cpp
+    )
+endif()
+
 add_library( raft ${CPP_SRC_FILES} )
 target_compile_definitions(raft PRIVATE -DLIBCOMPILE=1 -DRDTSCP=1 )
 target_include_directories(raft 

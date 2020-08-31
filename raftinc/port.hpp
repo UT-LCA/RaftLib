@@ -41,6 +41,10 @@
 #include "portexception.hpp"
 #include "defs.hpp"
 
+#ifdef VL
+#include "fifo_vl.tcc"
+#endif
+
 /** needed for friending below **/
 class MapBase;
 class roundrobin;
@@ -287,7 +291,17 @@ protected:
       pi.const_map[ Type::Heap ]->insert(
          std::make_pair( true /** yes instrumentation **/,
                          RingBuffer< T, Type::Heap, true >::make_new_fifo ) );
+#ifdef VL 
+      pi.const_map.insert(
+         std::make_pair( Type::VirtualLink , std::make_shared< instr_map_t >() ) );
 
+      pi.const_map[ Type::VirtualLink ]->insert(
+         std::make_pair( false /** no instrumentation **/,
+                         VLBuffer< T, Type::VirtualLink >::make_new_fifo ) );
+      pi.const_map[ Type::VirtualLink ]->insert(
+         std::make_pair( true /** yes instrumentation **/,
+                         VLBuffer< T, Type::VirtualLink >::make_new_fifo ) );
+#endif
       //pi.const_map.insert( std::make_pair( Type::SharedMemory, new instr_map_t() ) );
       //pi.const_map[ Type::SharedMemory ]->insert(
       //   std::make_pair( false /** no instrumentation **/,
