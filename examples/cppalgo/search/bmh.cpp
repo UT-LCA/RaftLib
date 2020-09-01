@@ -95,7 +95,8 @@ main( int argc, char **argv )
     print p;
     
     m += read >> find >> p;
-    m.exe();
-
+    //m.exe();
+    //m.exe< partition_dummy, pool_schedule, vlalloc, no_parallel >();
+    m.exe< partition_dummy, pool_schedule, stdalloc, no_parallel >();
     return( EXIT_SUCCESS );
 }

@@ -20,6 +20,8 @@ add_executable( ${APP} "${APP}.cpp" )
 include_directories( ${CMAKE_SCOTCH_INCS} )
 
 target_link_libraries( ${APP} 
+                       ${VL_LIB}
+		       ${M5_LIB}	
                        raft                       
                        ${CMAKE_THREAD_LIBS_INIT} 
                        ${CMAKE_SCOTCH_LIBS}

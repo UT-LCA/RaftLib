@@ -38,6 +38,8 @@ set( APP pisim )
 add_executable( ${APP} "${APP}.cpp" )
 
 target_link_libraries( ${APP} 
+                       ${VL_LIB}
+		       ${M5_LIB}	
                        raft
                        cmdargs
                        ${CMAKE_SCOTCH_LIBS}
