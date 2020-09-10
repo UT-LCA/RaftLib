@@ -72,7 +72,7 @@ template < std::size_t size = 65536 > struct filechunk
       return( size );
    }
 
-   friend std::ostream& operator <<( std::ostream &output, filechunk< size > &c )
+   friend std::ostream& operator <<( std::ostream &output, const filechunk< size > &c )
    {
       output << c.buffer;
       return( output );

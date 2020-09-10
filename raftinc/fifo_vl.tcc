@@ -31,14 +31,14 @@
 /** for yield **/
 #include "sysschedutil.hpp"
 
-template < class T,  Type::RingBufferType type > 
+template < class T,  Type::RingBufferType type >
 class VLBuffer : public FIFOAbstract < T, type >
 {
   public:
-    VLBuffer( const std::size_t n_items, 
-              const std::size_t align, 
+    VLBuffer( const std::size_t n_items,
+              const std::size_t align,
               void * const data ) : FIFOAbstract < T, type >()
-    { 
+    {
       UNUSED(align);
       UNUSED(data);
       (this)->bytes_per_element = ( ext_alloc< T >::value ) ? sizeof( T* ) : sizeof( T );
@@ -54,18 +54,16 @@ class VLBuffer : public FIFOAbstract < T, type >
     {
       if( !(this)->invalidate_called ) {
         if( (this)->isProducer ) {
-          //std::cout << "(~VLBuf) producer closed - fd: " << (this)->endpt.fd << "\n";
-          close_byte_vl_as_producer( (this)->endpt );       
+          close_byte_vl_as_producer( (this)->endpt );
         }
         else {
-          //std::cout << "(~VLBuf) consumer closed - fd: " << (this)->endpt.fd << "\n";
           close_byte_vl_as_consumer( (this)->endpt );
         }
       }
     }
 
     static FIFO* make_new_fifo( const std::size_t n_items,
-                                const std::size_t align, 
+                                const std::size_t align,
                                 void * const data )
     {
       return( new VLBuffer<T , type>( n_items, align, data ) );
@@ -78,28 +76,24 @@ class VLBuffer : public FIFOAbstract < T, type >
       } else {
         size_t ret =  ( vl_consumer_size( &((this)->endpt), (this)->bytes_per_element ) );
         if (ret == 0) {
-          void *ptr;
-          //Dummy call to send a consumer request
-          ptr = (void*) vl_peek ( &((this)->endpt), (this)->bytes_per_element, false);
-          ptr = ptr;
-          ret =  ( vl_consumer_size( &((this)->endpt), (this)->bytes_per_element ) );
+          ret = vl_size( &((this)->endpt) );
         }
         return ret;
       }
     }
-    
+
     virtual std::size_t
-    space_avail() 
+    space_avail()
     {
       return ( (this)->capacity() - (this)->size() );
     }
-    
+
     virtual std::size_t
-    capacity() 
+    capacity()
     {
       return ((this)->cap_max);
     }
-    
+
     virtual void
     deallocate()
     {
@@ -107,8 +101,8 @@ class VLBuffer : public FIFOAbstract < T, type >
       vl_deallocate ( &((this)->endpt), (this)->bytes_per_element );
       return;
     }
-    
-    virtual void 
+
+    virtual void
     send( const raft::signal = raft::none )
     {
       if( !(this)->producer_data.allocate_called ) {
@@ -118,22 +112,22 @@ class VLBuffer : public FIFOAbstract < T, type >
       vl_send ( &((this)->endpt), (this)->bytes_per_element );
       return;
     }
-    
-    virtual void 
+
+    virtual void
     send_range( const raft::signal = raft::none )
     {
       assert(false);
     }
-    
-    virtual void 
+
+    virtual void
     unpeek(){
       /* Nothing to do */
       return;
     }
-    
-    virtual void 
-    resize( const std::size_t n_items, 
-                         const std::size_t align, 
+
+    virtual void
+    resize( const std::size_t n_items,
+                         const std::size_t align,
                          volatile bool &exit_alloc )
     {
       UNUSED( n_items );
@@ -142,41 +136,37 @@ class VLBuffer : public FIFOAbstract < T, type >
       //TODO
       return;
     }
-    
-    virtual float 
+
+    virtual float
     get_frac_write_blocked()
     {
       // TODO: Implement this
       return 0.0;
     }
-    
+
     virtual std::size_t
     get_suggested_count()
     {
       return (this)->cap_max;
     }
-    
-    virtual void 
+
+    virtual void
     invalidate()
     {
-      
       if( (this)->isProducer ) {
-        //std::cout << "producer closed - fd: " << (this)->endpt.fd << "\n";
         close_byte_vl_as_producer( (this)->endpt );
         (this)->vlhptr->valid_count.fetch_sub(1, std::memory_order_relaxed);
       } else {
-        //std::cout << "consumer closed - fd: " << (this)->endpt.fd << "\n";
         close_byte_vl_as_consumer( (this)->endpt );
       }
       if ( (this)->vlhptr->valid_count.load(std::memory_order_relaxed) <= 0 ) {
-        (this)->vlhptr->is_valid = false; 
-        //std::cout << "Link expired" << "\n";
+        (this)->vlhptr->is_valid = false;
       }
 
       (this)->invalidate_called = true;
       return;
     }
-    
+
     virtual bool
     is_invalid()
     {
@@ -185,15 +175,10 @@ class VLBuffer : public FIFOAbstract < T, type >
         (this)->local_is_valid = (this)->vlhptr->is_valid;
         (this)->is_invalid_cnt = 1 << 16;
       }
-      if ( !(this)->isProducer && !(this)->local_is_valid ) {
-        if ( vl_size( &((this)->endpt) ) > 0 ) {
-          (this)->local_is_valid = true;
-        }
-      }
       return ( !(this)->local_is_valid );
     }
-    
-  
+
+
   protected:
     bool        local_is_valid    = true;
     bool       invalidate_called  = false;
@@ -206,22 +191,22 @@ class VLBuffer : public FIFOAbstract < T, type >
     {
       return raft::none;
     }
-    
-    virtual void 
+
+    virtual void
     signal_pop()
     {
       (this)->local_pop( nullptr, nullptr );
       return;
     }
-    
-    virtual void 
+
+    virtual void
     inline_signal_send( const raft::signal sig )
     {
-      (this)->local_push( nullptr, sig ); 
+      (this)->local_push( nullptr, sig );
       return;
     }
-    
-    virtual void 
+
+    virtual void
     local_allocate( void **ptr )
     {
       while(1) {
@@ -235,16 +220,16 @@ class VLBuffer : public FIFOAbstract < T, type >
       (this)->producer_data.allocate_called = true;
       return;
     }
-    
-    virtual void 
+
+    virtual void
     local_allocate_n( void *ptr, const std::size_t n )
     {
       UNUSED(ptr);
       UNUSED(n);
       assert(false);
     }
-    
-    virtual void 
+
+    virtual void
     local_push( void *ptr, const raft::signal &signal )
     {
       UNUSED(signal);
@@ -253,10 +238,10 @@ class VLBuffer : public FIFOAbstract < T, type >
       (this)->send(raft::none);
       return;
     }
-    
-    virtual void 
-    local_insert( void *ptr_begin, 
-                       void *ptr_end, 
+
+    virtual void
+    local_insert( void *ptr_begin,
+                       void *ptr_end,
                        const raft::signal &signal,
                        const std::size_t iterator_type )
     {
@@ -266,8 +251,8 @@ class VLBuffer : public FIFOAbstract < T, type >
       UNUSED(iterator_type);
       assert(false);
     }
-    
-    virtual void 
+
+    virtual void
     local_pop( void *ptr, raft::signal *signal )
     {
       UNUSED(signal);
@@ -276,8 +261,8 @@ class VLBuffer : public FIFOAbstract < T, type >
       (this)->recycle();
       return;
     }
-    
-    virtual void 
+
+    virtual void
     local_pop_range( void *ptr_data,
                           const std::size_t n_items )
     {
@@ -285,8 +270,8 @@ class VLBuffer : public FIFOAbstract < T, type >
       UNUSED(n_items);
       assert(false);
     }
-    
-    virtual void 
+
+    virtual void
     local_peek( void **ptr, raft::signal *signal )
     {
       UNUSED(signal);
@@ -303,10 +288,10 @@ class VLBuffer : public FIFOAbstract < T, type >
       *ptr = (void*) vl_peek ( &((this)->endpt), (this)->bytes_per_element, true);
       return;
     }
-    
-    
-    virtual void 
-    local_peek_range( void **ptr, 
+
+
+    virtual void
+    local_peek_range( void **ptr,
                            void **sig,
                            const std::size_t n_items,
                            std::size_t &curr_pointer_loc )
@@ -317,8 +302,8 @@ class VLBuffer : public FIFOAbstract < T, type >
       UNUSED(curr_pointer_loc);
       assert(false);
     }
-    
-    virtual void 
+
+    virtual void
     local_recycle( std::size_t range )
     {
       UNUSED(range);

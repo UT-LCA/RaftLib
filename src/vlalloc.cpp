@@ -63,10 +63,9 @@ vlalloc::run()
         vlhptr = b.vlhptr;
       }
       else {
-        VLHandle vlh;
-        vlh.vl_fd = mkvl();
-        vlh.valid_count.store(0, std::memory_order_relaxed);
-        vlhptr = &vlh;
+        vlhptr = new VLHandle;
+        vlhptr->vl_fd = mkvl();
+        vlhptr->valid_count.store(0, std::memory_order_relaxed);
       }
       /* If one of them has a VL file descriptor, use it */
       auto test_func( (*func_map)[ false ] );
