@@ -43,6 +43,24 @@ vlalloc::~vlalloc()
 void
 vlalloc::run()
 {
+   std::map<std::string, int> fd_map;
+
+   auto assign_func = [&]( PortInfo &a,
+                           PortInfo &b,
+                           void *data )
+   {
+      (void) data;
+      std::string key = std::to_string(a.my_kernel->leader_id) + "->" +
+        std::to_string(b.my_kernel->leader_id);
+      if (fd_map.end() == fd_map.find(key)) {
+        int fd = mkvl();
+        fd_map.emplace(key, fd);
+      }
+   };
+
+   auto &container( (this)->source_kernels.acquire() );
+   GraphTools::BFS( container, assign_func );
+
    auto alloc_func = [&]( PortInfo &a,
                           PortInfo &b,
                           void *data )
@@ -52,6 +70,10 @@ vlalloc::run()
       FIFO  *cons_fifo( nullptr );
       VLHandle *vlhptr( nullptr );
       auto &func_map( a.const_map[ Type::VirtualLink ] ); 
+
+      std::string key = std::to_string(a.my_kernel->leader_id) + "->" +
+        std::to_string(b.my_kernel->leader_id);
+      int fd = fd_map.find(key)->second;
 
       if (a.getFIFO() != nullptr && b.getFIFO() != nullptr) {
         assert(false);
@@ -64,7 +86,7 @@ vlalloc::run()
       }
       else {
         vlhptr = new VLHandle;
-        vlhptr->vl_fd = mkvl();
+        vlhptr->vl_fd = fd;
         vlhptr->valid_count.store(0, std::memory_order_relaxed);
       }
       /* If one of them has a VL file descriptor, use it */
@@ -98,7 +120,6 @@ vlalloc::run()
 
    };
 
-   auto &container( (this)->source_kernels.acquire() );
    GraphTools::BFS( container, alloc_func );
    (this)->source_kernels.release();
    (this)->setReady();

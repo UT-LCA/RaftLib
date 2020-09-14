@@ -126,6 +126,8 @@ public:
        return( core_assign );
    }
 
+   std::size_t leader_id;
+
 protected:
     /**
      * 

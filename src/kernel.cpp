@@ -10,6 +10,7 @@ std::size_t kernel::kernel_count( 0 );
 /** default **/
 kernel::kernel() : kernel_id( kernel::kernel_count )
 {
+   leader_id = kernel_id;
    kernel::kernel_count++;
 }
 
@@ -20,6 +21,7 @@ kernel::kernel( void * const ptr,
    output( this, ptr, nbytes ),
    kernel_id( kernel::kernel_count )
 {
+   leader_id = kernel_id;
 }
 
 
