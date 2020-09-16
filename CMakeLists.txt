@@ -39,6 +39,11 @@ if (GEM5_ROOT)
 else()
     set ( M5_LIB "" )
 endif()
+mark_as_advanced( RUN_BENCHMARKS )
+set( RUN_BENCHMARKS false CACHE BOOL "Set flags and variables to synchronize execution" )
+if( RUN_BENCHMARKS )
+    add_definitions( "-DBENCHMARK=1" )
+endif( RUN_BENCHMARKS )
 
 ##
 # need this for examples and testcases
