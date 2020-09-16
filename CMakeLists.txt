@@ -24,6 +24,8 @@ add_subdirectory(helpers)
 ##
 add_definitions( "-DL1D_CACHE_LINE_SIZE=${L1D_LINE_SIZE}" ) 
 
+add_compile_options(-g -O3)
+
 if (VL_ROOT)
     set ( VL_LIB "${VL_ROOT}/libvl/libvl.a" )
     add_definitions( "-DVL" ) 
@@ -36,6 +38,7 @@ if (GEM5_ROOT)
     set ( M5_LIB "libm5.a" )
     include_directories(${GEM5_ROOT}/include)
     link_directories(${GEM5_ROOT}/util/m5)
+    add_definitions( "-DGEM5" )
 else()
     set ( M5_LIB "" )
 endif()

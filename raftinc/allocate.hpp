@@ -43,7 +43,7 @@
 #define ALLOC_ALIGN_WIDTH L1D_CACHE_LINE_SIZE
 #endif
 
-#define INITIAL_ALLOC_SIZE 64
+#define INITIAL_ALLOC_SIZE 4096
 
 namespace raft
 {
