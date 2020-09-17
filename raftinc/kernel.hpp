@@ -129,7 +129,13 @@ public:
        return( core_assign );
    }
 
+   bool isLeader() noexcept
+   {
+       return ( leader_id == kernel_id );
+   }
+
    std::size_t leader_id;
+   std::size_t group_size;
 
 protected:
     /**

@@ -96,9 +96,12 @@ vlalloc::run()
         /** if fixed buffer size, use that, else use INITIAL_ALLOC_SIZE **/
         const auto alloc_size( 
             a.fixed_buffer_size != 0 ? a.fixed_buffer_size : INITIAL_ALLOC_SIZE); 
+        struct VLBufferInfo info;
+        info.is_leader = a.my_kernel->isLeader();
+        info.group_size = a.my_kernel->group_size;
         prod_fifo = test_func( alloc_size,
                                ALLOC_ALIGN_WIDTH,
-                               nullptr);
+                               (void*)&info );
         prod_fifo->open_vl( vlhptr, true );
         a.vlhptr = vlhptr;
         a.setFIFO( prod_fifo );
@@ -109,9 +112,12 @@ vlalloc::run()
         /** if fixed buffer size, use that, else use INITIAL_ALLOC_SIZE **/
         const auto alloc_size( 
             b.fixed_buffer_size != 0 ? b.fixed_buffer_size : INITIAL_ALLOC_SIZE); 
+        struct VLBufferInfo info;
+        info.is_leader = b.my_kernel->isLeader();
+        info.group_size = b.my_kernel->group_size;
         cons_fifo = test_func( alloc_size  /* items */,
                                ALLOC_ALIGN_WIDTH,
-                               nullptr);
+                               (void*)&info );
         cons_fifo->open_vl( vlhptr, false );
         b.setFIFO( cons_fifo );
         b.vlhptr = vlhptr;

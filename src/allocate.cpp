@@ -38,6 +38,7 @@ Allocate::~Allocate()
 {
    for( FIFO *f : allocated_fifo )
    {
+      std::cout << "Deleting fifo " << std::hex << (uint64_t)f << std::dec << std::endl;
       delete( f );
    }
 }

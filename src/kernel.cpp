@@ -15,6 +15,7 @@ std::size_t kernel::kernel_count( 0 );
 kernel::kernel() : kernel_id( kernel::kernel_count )
 {
    leader_id = kernel_id;
+   group_size = 1;
    kernel::kernel_count++;
 }
 
@@ -26,6 +27,7 @@ kernel::kernel( void * const ptr,
    kernel_id( kernel::kernel_count )
 {
    leader_id = kernel_id;
+   group_size = 1;
 }
 
 

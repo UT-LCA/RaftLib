@@ -37,10 +37,15 @@ class VLBuffer : public FIFOAbstract < T, type >
   public:
     VLBuffer( const std::size_t n_items,
               const std::size_t align,
-              void * const data ) : FIFOAbstract < T, type >()
+              void * const data,
+              bool is_leader,
+              std::size_t group_size) : FIFOAbstract < T, type >()
     {
+      std::cout << "Made new fifo " << std::hex << (uint64_t)this << std::dec << std::endl;
       UNUSED(align);
       UNUSED(data);
+      (this)->is_leader = is_leader;
+      (this)->group_size = group_size;
       (this)->bytes_per_element = ( ext_alloc< T >::value ) ? sizeof( T* ) : sizeof( T );
       /* Set the capacity */
       if( n_items > ( L1D_VL_CACHE_LINE_SIZE / (this)->bytes_per_element )) {
@@ -52,13 +57,8 @@ class VLBuffer : public FIFOAbstract < T, type >
 
     virtual ~VLBuffer()
     {
-      if( !(this)->invalidate_called ) {
-        if( (this)->isProducer ) {
-          close_byte_vl_as_producer( (this)->endpt );
-        }
-        else {
-          close_byte_vl_as_consumer( (this)->endpt );
-        }
+      if( !(this)->isProducer ) {
+        close_byte_vl_as_consumer( (this)->endpt );
       }
     }
 
@@ -66,7 +66,11 @@ class VLBuffer : public FIFOAbstract < T, type >
                                 const std::size_t align,
                                 void * const data )
     {
-      return( new VLBuffer<T , type>( n_items, align, data ) );
+      struct VLBufferInfo *info = (struct VLBufferInfo*) data;
+      bool is_leader = info->is_leader;
+      std::size_t group_size = info->group_size;
+      return( new VLBuffer<T , type>( n_items, align, data,
+                                      is_leader, group_size ) );
     }
     virtual std::size_t
     size()
@@ -74,11 +78,7 @@ class VLBuffer : public FIFOAbstract < T, type >
       if ( (this)->isProducer ) {
         return ( vl_producer_size( &((this)->endpt), (this)->bytes_per_element ) );
       } else {
-        size_t ret =  ( vl_consumer_size( &((this)->endpt), (this)->bytes_per_element ) );
-        if (ret == 0) {
-          ret = vl_size( &((this)->endpt) );
-        }
-        return ret;
+        return ( vl_consumer_size( &((this)->endpt), (this)->bytes_per_element ) );
       }
     }
 
@@ -156,14 +156,10 @@ class VLBuffer : public FIFOAbstract < T, type >
       if( (this)->isProducer ) {
         close_byte_vl_as_producer( (this)->endpt );
         (this)->vlhptr->valid_count.fetch_sub(1, std::memory_order_relaxed);
-      } else {
-        close_byte_vl_as_consumer( (this)->endpt );
+        if ( (this)->vlhptr->valid_count.load(std::memory_order_relaxed) <= 0 ) {
+          (this)->vlhptr->is_valid = false;
+        }
       }
-      if ( (this)->vlhptr->valid_count.load(std::memory_order_relaxed) <= 0 ) {
-        (this)->vlhptr->is_valid = false;
-      }
-
-      (this)->invalidate_called = true;
       return;
     }
 
@@ -175,16 +171,26 @@ class VLBuffer : public FIFOAbstract < T, type >
         (this)->local_is_valid = (this)->vlhptr->is_valid;
         (this)->is_invalid_cnt = 1 << 16;
       }
+      if (!(this)->isProducer && !(this)->local_is_valid) {
+        int left_in_routing_device = vl_size(&((this)->endpt));
+        /* remaining in routing device */
+        if (left_in_routing_device > (this)->group_size) {
+          (this)->local_is_valid = true;
+        } else if (left_in_routing_device > 0 && (this)->is_leader) {
+          (this)->local_is_valid = true;
+        }
+      }
       return ( !(this)->local_is_valid );
     }
 
 
   protected:
     bool        local_is_valid    = true;
-    bool       invalidate_called  = false;
     std::size_t is_invalid_cnt    = 1 << 16;
     std::size_t bytes_per_element = 0;
     std::size_t cap_max           = 0;
+    std::size_t group_size;
+    bool        is_leader;
 
     virtual raft::signal
     signal_peek()
@@ -283,7 +289,16 @@ class VLBuffer : public FIFOAbstract < T, type >
           throw ClosedPortAccessException(
               "Accessing closed port with local_peek call, exiting!!" );
         }
-        raft::yield();
+        if (NULL != vl_peek ( &((this)->endpt), (this)->bytes_per_element, false)) {
+          break;
+        } else {
+          raft::yield();
+        }
+        //bool pop_valid = false;
+        //byte_vl_pop_non(&((this)->endpt), &pop_valid);
+        //if (!pop_valid) {
+        //  raft::yield();
+        //}
       }
       *ptr = (void*) vl_peek ( &((this)->endpt), (this)->bytes_per_element, true);
       return;

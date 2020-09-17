@@ -17,4 +17,10 @@ struct alignas( 64 ) VLHandle
   std::atomic<int> valid_count;
 };
 
+struct VLBufferInfo
+{
+  bool is_leader;
+  std::size_t group_size;
+};
+
 #endif /* VLHANDLE_HPP */
