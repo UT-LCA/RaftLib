@@ -41,7 +41,6 @@ class VLBuffer : public FIFOAbstract < T, type >
               bool is_leader,
               std::size_t group_size) : FIFOAbstract < T, type >()
     {
-      std::cout << "Made new fifo " << std::hex << (uint64_t)this << std::dec << std::endl;
       UNUSED(align);
       UNUSED(data);
       (this)->is_leader = is_leader;
@@ -78,7 +77,12 @@ class VLBuffer : public FIFOAbstract < T, type >
       if ( (this)->isProducer ) {
         return ( vl_producer_size( &((this)->endpt), (this)->bytes_per_element ) );
       } else {
-        return ( vl_consumer_size( &((this)->endpt), (this)->bytes_per_element ) );
+        std::size_t cons_line_size =
+            vl_consumer_size( &((this)->endpt), (this)->bytes_per_element );
+        if (0 == cons_line_size) {
+            vl_peek ( &((this)->endpt), (this)->bytes_per_element, false);
+        }
+        return cons_line_size;
       }
     }
 
