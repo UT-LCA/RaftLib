@@ -134,7 +134,7 @@ public:
       updateKernels( a, b );
       PortInfo &port_info_a( a->output.getPortInfoFor( a_port ) );
       port_info_a.fixed_buffer_size = buffer;
-      PortInfo *port_info_b;
+      PortInfo *port_info_b = NULL;
       try{
          port_info_b = &(b->input.getPortInfo());
       }

@@ -33,7 +33,7 @@
 #include "port_info_types.hpp"
 #include "fifo.hpp"
 
-#ifdef VL   
+#ifndef NOVL
 #include "vlhandle.hpp"
 #endif   
 
@@ -116,7 +116,7 @@ struct PortInfo
    std::size_t       nitems          = 0;
    std::size_t       start_index     = 0;
    std::size_t       fixed_buffer_size = 0;
-#ifdef VL   
+#ifndef NOVL
    VLHandle*         vlhptr;
 #endif   
 };

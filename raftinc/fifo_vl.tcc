@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifdef VL
+#ifndef NOVL
 #ifndef FIFOVL_TCC
 #define FIFOVL_TCC  1
 
@@ -26,8 +26,8 @@
 #include "port_info.hpp"
 #include "portexception.hpp"
 #include "ringbuffertypes.hpp"
+#include "vl/vl.h"
 #include "vlhandle.hpp"
-#include "vl.h"
 /** for yield **/
 #include "sysschedutil.hpp"
 

@@ -33,9 +33,6 @@
 #include "allocate.hpp"
 #include "dynalloc.hpp"
 #include "stdalloc.hpp"
-#ifdef VL
-#include "vlalloc.hpp"
-#endif
 #include "mapbase.hpp"
 #include "poolschedule.hpp"
 #include "basicparallel.hpp"

@@ -41,7 +41,7 @@
 #include "partition_scotch.hpp"
 #endif
 #include "defs.hpp"
-#ifdef GEM5
+#ifndef NOGEM5
 #include "gem5/m5ops.h"
 #endif
 
@@ -114,7 +114,7 @@ pool_schedule::start()
     {  
         (this)->handleSchedule( k );
     }
-#ifdef GEM5
+#ifndef NOGEM5
     m5_reset_stats(0, 0);
 #endif
     /**
@@ -140,7 +140,7 @@ START:
         }
     }
     tail_mutex.unlock();
-#ifdef GEM5
+#ifndef NOGEM5
     m5_dump_reset_stats(0, 0);
 #endif
     return;

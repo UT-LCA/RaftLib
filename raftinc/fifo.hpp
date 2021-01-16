@@ -36,8 +36,8 @@
 #include "signalvars.hpp"
 #include "alloc_traits.tcc"
 #include "defs.hpp"
-#ifdef VL
-#include "vl.h"
+#ifndef NOVL
+#include "vl/vl.h"
 #include "vlhandle.hpp"
 #endif
 
@@ -536,7 +536,7 @@ public:
     * @return bool - true if invalid
     */
    virtual bool is_invalid() = 0;
-#ifdef VL   
+#ifndef NOVL
    void open_vl ( VLHandle* vlhptr, bool isProducer)
    {
      (this)->vlhptr     = vlhptr;
@@ -550,7 +550,7 @@ public:
    }
 #endif
 protected:
-#ifdef VL   
+#ifndef NOVL
     VLHandle*   vlhptr;
     vlendpt_t   endpt;
     bool        isProducer;

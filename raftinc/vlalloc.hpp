@@ -19,7 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifdef VL
+#ifndef NOVL
 #ifndef RAFTVLALLOC_HPP
 #define RAFTVLALLOC_HPP  1
 #include "allocate.hpp"

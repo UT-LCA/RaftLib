@@ -20,7 +20,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifdef VL
+#ifndef NOVL
 #include <chrono>
 #include <thread>
 #include "kernelkeeper.tcc"

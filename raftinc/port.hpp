@@ -41,7 +41,7 @@
 #include "portexception.hpp"
 #include "defs.hpp"
 
-#ifdef VL
+#ifndef NOVL
 #include "fifo_vl.tcc"
 #endif
 
@@ -291,7 +291,7 @@ protected:
       pi.const_map[ Type::Heap ]->insert(
          std::make_pair( true /** yes instrumentation **/,
                          RingBuffer< T, Type::Heap, true >::make_new_fifo ) );
-#ifdef VL 
+#ifndef NOVL
       pi.const_map.insert(
          std::make_pair( Type::VirtualLink , std::make_shared< instr_map_t >() ) );
 
