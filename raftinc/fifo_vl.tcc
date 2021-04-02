@@ -113,7 +113,12 @@ class VLBuffer : public FIFOAbstract < T, type >
         return;
       }
       (this)->producer_data.allocate_called = false;
-      vl_send ( &((this)->endpt), (this)->bytes_per_element );
+      while (true) {
+          if (vl_send ( &((this)->endpt), (this)->bytes_per_element )) {
+              break;
+          }
+          raft::yield();
+      }
       return;
     }
 
