@@ -33,7 +33,7 @@
 #include "./raftinc/stdalloc.hpp"
 #include "./raftinc/rafttypes.hpp"
 #include "./raftinc/kernel_all.hpp"
-#ifdef VL
+#ifndef NOVL
 #include "./raftinc/vlalloc.hpp"
 #include "./raftinc/vlhandle.hpp"
 #endif

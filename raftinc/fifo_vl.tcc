@@ -125,7 +125,16 @@ class VLBuffer : public FIFOAbstract < T, type >
     virtual void
     send_range( const raft::signal = raft::none )
     {
-      assert(false);
+      if( !(this)->producer_data.allocate_called ) {
+        return;
+      }
+      (this)->producer_data.allocate_called = false;
+      while (true) {
+          if (vl_send ( &((this)->endpt), (this)->bytes_per_element )) {
+              break;
+          }
+          raft::yield();
+      }
     }
 
     virtual void
@@ -181,7 +190,7 @@ class VLBuffer : public FIFOAbstract < T, type >
         (this)->is_invalid_cnt = 1 << 16;
       }
       if (!(this)->isProducer && !(this)->local_is_valid) {
-        int left_in_routing_device = vl_size(&((this)->endpt));
+        uint64_t left_in_routing_device = vl_size(&((this)->endpt));
         /* remaining in routing device */
         if (left_in_routing_device > (this)->group_size) {
           (this)->local_is_valid = true;
@@ -230,8 +239,7 @@ class VLBuffer : public FIFOAbstract < T, type >
         }
         raft::yield();
       }
-      *ptr = (void*) vl_allocate( &((this)->endpt),
-                                  (this)->bytes_per_element);
+      *ptr = vl_allocate( &((this)->endpt), (this)->bytes_per_element );
       (this)->producer_data.allocate_called = true;
       return;
     }
@@ -239,9 +247,18 @@ class VLBuffer : public FIFOAbstract < T, type >
     virtual void
     local_allocate_n( void *ptr, const std::size_t n )
     {
-      UNUSED(ptr);
-      UNUSED(n);
-      assert(false);
+      auto *container(
+         reinterpret_cast< std::vector< std::reference_wrapper< T > >* >( ptr )
+         );
+      for( std::size_t index( 0 ); index < n; index++ )
+      {
+         container->emplace_back( *reinterpret_cast< T* >(
+                     vl_allocate( &((this)->endpt), (this)->bytes_per_element )
+                     ) );
+      }
+      (this)->producer_data.n_allocated =
+        static_cast< decltype( (this)->producer_data.n_allocated ) >( n );
+      (this)->producer_data.allocate_called = true;
     }
 
     virtual void
@@ -320,18 +337,31 @@ class VLBuffer : public FIFOAbstract < T, type >
                            const std::size_t n_items,
                            std::size_t &curr_pointer_loc )
     {
-      UNUSED(ptr);
+      while (1) {
+        if( n_items <- ((this)->size()) )
+        {
+          break;
+        } else if( (this)->is_invalid() && ((this)->size() == 0) ) {
+          throw ClosedPortAccessException(
+              "Accessing closed port with local_peek call, exiting!!" );
+        }
+        if (NULL != vl_peek (
+                    &((this)->endpt), (this)->bytes_per_element, false)) {
+          break;
+        } else {
+          raft::yield();
+        }
+      }
+      *ptr = (void*) vl_peek ( &((this)->endpt), (this)->bytes_per_element,
+                               true);
       UNUSED(sig);
-      UNUSED(n_items);
       UNUSED(curr_pointer_loc);
-      assert(false);
     }
 
     virtual void
     local_recycle( std::size_t range )
     {
-      UNUSED(range);
-      vl_recycle ( &((this)->endpt), (this)->bytes_per_element);
+      vl_recycle ( &((this)->endpt), range * (this)->bytes_per_element);
     }
 
 };
