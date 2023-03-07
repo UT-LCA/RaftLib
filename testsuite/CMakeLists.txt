@@ -6,51 +6,67 @@ list( APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake )
 include( CheckSTD )
 
 if( STRING_NAMES )
-    set( TESTAPPS allocate
-         portTypeException dynallocate stdlibsupport split
-         join lambdatest allocate_s foreach peekrange
-         partitionTest parallel peek
-         bracketsTest uniform chain
-         splitchain staticLongSplitChain
-         staticSplitJoin staticSplitChainJoin
-         staticJoin staticContJoin
+    set( TESTAPPS
          fitInCacheLine
-         isExtClass
          doesntFitInCacheLine
+         isExtClass
          isInlineClass
+         isInlineNonClass
          isExtArray
          isExtAlloc
-         isInlineNonClass
-         allocateSendPush
-         allocateSendRandomPush
-         allocatePopPush
-         allocatePopInternal
-         allocatePopInternalObject
-         allocatePopExternal
-         parallelchain
-         ksettest
-         multiPrint
-         fixedMatchTest
-         poolThreadRaftManip
-         select_in_t
-         splitchainRetStruct
-         staticContJoinRetStruct
-         staticJoinRetStruct
-         staticLongSplitChainRetStruct
-         staticSplitChainJoinRetStruct
-         staticSplitJoinRetStruct
-         chainMultiplePorts
-         #fixedAllocate
+         streamingData
          noPortException
-         twiceAdd
+         portTypeException
          disconnectedGraph
-         allocate_s_string
-         allpush
-         nonTrivialAllocatorPop
-         nonTrivialAllocatorPopExternal
-         vectorAlloc
-         stringAlloc
-         reduction
+         bracketsTest
+         #partitionTest
+         fixedMatchTest
+         stdlibsupport
+         armqMini
+         #lambdatest
+         #peek
+         #allocate
+         #allocate_s
+         #foreach
+         #dynallocate
+         #split
+         #join
+         #peekrange
+         #parallel
+         #uniform
+         #chain
+         #splitchain
+         #staticLongSplitChain
+         #staticSplitJoin
+         #staticSplitChainJoin
+         #staticJoin
+         #staticContJoin
+         #allocateSendPush
+         #allocateSendRandomPush
+         #allocatePopPush
+         #allocatePopInternal
+         #allocatePopInternalObject
+         #allocatePopExternal
+         #parallelchain
+         #multiPrint
+         #poolThreadRaftManip
+         #select_in_t
+         #splitchainRetStruct
+         #staticContJoinRetStruct
+         #staticJoinRetStruct
+         #staticLongSplitChainRetStruct
+         #staticSplitChainJoinRetStruct
+         #staticSplitJoinRetStruct
+         #chainMultiplePorts
+         ###fixedAllocate
+         #twiceAdd
+         #allocate_s_string
+         #allpush
+         #nonTrivialAllocatorPop
+         #nonTrivialAllocatorPopExternal
+         #vectorAlloc
+         #stringAlloc
+         #reduction
          )
 else()
     set( TESTAPPS

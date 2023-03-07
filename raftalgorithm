@@ -21,6 +21,6 @@
 #ifndef _RAFTALGORITHM_HPP_
 #define _RAFTALGORITHM_HPP_  1
 
-#include "./raftinc/search.tcc"
+#include "./raftinc/utils/search.tcc"
 
 #endif /* END _RAFTALGORITHM_HPP_ */

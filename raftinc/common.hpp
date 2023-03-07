@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTCOMMON_HPP
-#define RAFTCOMMON_HPP  1
+#ifndef RAFT_COMMON_HPP
+#define RAFT_COMMON_HPP  1
 #include <string>
 #include <cstdlib>
 #include <cassert>
@@ -84,4 +84,4 @@ constexpr static auto convert_arr( F&&... t )
 
 };
 
-#endif /* END RAFTCOMMON_HPP */
+#endif /* END RAFT_COMMON_HPP */

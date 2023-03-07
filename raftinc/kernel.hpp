@@ -1,8 +1,9 @@
 /**
  * kernel.hpp -
- * @author: Jonathan Beard
- * @version: Thu Sep 11 15:34:24 2014
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tue Mar 07 15:22:24 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2014 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,106 +18,113 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTKERNEL_HPP
-#define RAFTKERNEL_HPP  1
+#ifndef RAFT_KERNEL_HPP
+#define RAFT_KERNEL_HPP  1
 
 #include <functional>
 #include <utility>
 #include <cstdint>
 #include <queue>
+#include <unordered_map>
 #include <string>
 #include <sstream>
 #ifdef BENCHMARK
 #include <atomic>
 #endif
-#include "kernelexception.hpp"
-#include "port.hpp"
-#include "signalvars.hpp"
+#include "exceptions.hpp"
+#include "port_info.hpp"
 #include "rafttypes.hpp"
 #include "common.hpp"
 #include "defs.hpp"
 #include "kpair.hpp"
+#include "task.hpp"
 
-/** pre-declare for friends **/
-class MapBase;
-class Schedule;
-class kernel_container;
-class Map;
-class basic_parallel;
-class interface_partition;
-class pool_schedule;
-class GraphTools;
-
-
-#ifndef CLONE
-namespace raft
-{
-    class kernel;
-}
-#define CLONE() \
-virtual raft::kernel* clone()\
-{ \
-    auto *ptr( \
-        new typename std::remove_reference< decltype( *this ) >::type( ( *(\
-    (typename std::decay< decltype( *this ) >::type * ) \
-    this ) ) ) );\
-    /** RL needs to dealloc this one **/\
-    ptr->internal_alloc = true;\
-    return( ptr );\
-}
-#endif
 
 namespace raft {
-class kernel
+
+class StreamingData;
+class Kernel;
+
+class Kernel
 {
+
+    /** some helper functions for port adding **/
+    template < class T, class K, class P >
+    void add_port_helper( K &kernel, P &port )
+    {
+        UNUSED( kernel );
+        UNUSED( port );
+    }
+    
+    template < class T, class K, class P, class PORTNAME, class... PORTNAMES >
+    void add_port_helper( K &kernel,
+                          P &port,
+                          PORTNAME &&portname,
+                          PORTNAMES&&... portnames )
+    {
+        kernel.template add_port< T >( port, portname );
+        add_port_helper< T, K, P, PORTNAMES... >(
+                kernel, port, std::forward< PORTNAMES >( portnames )... );
+    }
+
 public:
     /** default constructor **/
-    kernel() : kernel_id( kernel_count() )
-    {
-        //kernel_count++;
-    }
-
-    /** in-place allocation **/
-    kernel( void * const ptr,
-            const std::size_t nbytes ) :
-        input( this, ptr, nbytes ),
-        output( this, ptr, nbytes ),
-        kernel_id( kernel_count(0) )
+    Kernel() : kernel_id( kernel_count() )
     {
     }
 
-    virtual ~kernel() = default;
-
+    virtual ~Kernel() = default;
 
     /**
-     * run - function to be extended for the actual execution.
-     * Code can be executed outside of the run function, i.e.,
-     * with any function call, however the scheduler will only
-     * call the run function so it must initiate any follow-on
-     * behavior desired by the user.
+     * compute - function that programers should extended for the
+     * actual computation.
      */
-    virtual raft::kstatus run() = 0;
-
+    virtual kstatus::value_t compute( StreamingData &data_in,
+                                      StreamingData &data_out ) = 0;
 
     /**
-     * clone - used for parallelization of kernels, if necessary
-     * sub-kernels should include an appropriate copy
-     * constructor so all class member variables can be
-     * set.
-     * @param   other, T& - reference to object to be cloned
-     * @return  kernel*   - takes base type, however is same as
-     * allocated by copy constructor for T.
+     * pop - function that programers should extended for
+     * checking (w/ dryrun = true) and actually preparing the input.
      */
-    virtual raft::kernel* clone()
+    virtual bool pop( Task *task, bool dryrun ) = 0;
+
+    /**
+     * allocate - function that programers should extended for
+     * checking (w/ dryrun = true) and actually allocate the output
+     * buffer.
+     */
+    virtual bool allocate( Task *task, bool dryrun ) = 0;
+
+    /**
+     * packInputData - function that packages and returns input data.
+     */
+    bool packInputData( Task *task )
     {
-        throw CloneNotImplementedException(
-                "Sub-class has failed to implement clone function, "
-                "please use the CLONE() macro to add functionality" );
-        /** won't be reached **/
-        return( nullptr );
+        return (this)->pop( task, false );
     }
 
-    std::size_t get_id()
+    StreamingData &getInputData( Task *task )
+    {
+        (this)->pop( task, true );
+        return task->getDataIn();
+    }
+
+    /**
+     * packOutputBuf - function that allocate and packages the output
+     * buffer.
+     */
+    bool packOutputBuf( Task *task )
+    {
+        return (this)->allocate( task, false );
+    }
+
+    StreamingData &getOutputBuf( Task *task )
+    {
+        (this)->allocate( task, true );
+        return task->getBufOut();
+    }
+
+    std::size_t getId()
     {
         return( kernel_id );
     }
@@ -124,146 +132,53 @@ public:
     /**
      * operator[] - returns the current kernel with the
      * specified port name enabled for linking.
-     * @param portname - const raft::port_key_type&&
+     * @param portname - const raft::port_name_t&&
      * @return raft::kernel&&
      */
-#ifdef STRING_NAMES
-    KernelPortMeta operator []( const raft::port_key_type &&portname )
+    KernelPort &operator []( const port_name_t &&portname )
     {
-        return( KernelPortMeta(this, portname,
-                    output.count(), input.count()) );
-    }
-    KernelPortMeta operator []( const raft::port_key_type &portname )
-    {
-        return( KernelPortMeta(this, portname,
-                    output.count(), input.count()) );
-    }
-#else
-    template < class T > KernelPortMeta
-    operator []( const T &&portname )
-    {
-        return( KernelPortMeta(this, portname,
-                     output.count(), input.count()) );
-    }
-
-    template < class T > KernelPortMeta
-    operator []( const T &portname )
-    {
-        return( KernelPortMeta(this, portname,
-                     output.count(), input.count()) );
-    }
-#endif /** end if not string names **/
-
-    kpair&
-    operator >> ( kernel *rhs )
-    {
-        auto *ptr( new kpair( this, rhs ) );
+        auto *ptr( new KernelPort( this, portname ) );
         return( *ptr );
-    }
-
-    kpair&
-    operator >> ( kernel &rhs )
-    {
-        auto *ptr( new kpair( this, &rhs ) );
-        return( *ptr );
-    }
-
-    kpair&
-    operator >> ( const KernelPortMeta &rhs )
-    {
-        KernelPortMeta *meta_ptr = new KernelPortMeta(rhs);
-        auto *ptr( new kpair( this, meta_ptr ) );
-        return( *ptr );
-    }
-
-    kpair&
-    operator >> ( KernelPortMeta *rhs )
-    {
-        auto *ptr( new kpair( this, rhs ) );
-        return( *ptr );
-    }
-
-    kpair&
-    operator <= ( kernel &rhs )
-    {
-        auto *ptr( new kpair( this, &rhs, true, false ) );
-        return( *ptr );
-    }
-
-    kpair&
-    operator <= ( kpair &rhs )
-    {
-        auto *ptr( new kpair( this, rhs, true, false ) );
-        return( rhs );
-    }
-
-    kpair&
-    operator >= ( raft::kernel *rhs )
-    {
-        auto *ptr( new kpair( this, rhs, false, true ) );
-        return( *ptr );
-    }
-
-    kpair&
-    operator >= ( kpair &rhs )
-    {
-        auto *ptr( new kpair( this, rhs, false, true ) );
-        return( rhs );
     }
 
     /**
-     * >>, we're using the raft::order::spec as a linquistic tool
-     * at this point. It's only used for disambiguating functions.
+     * k0 >> k1
      */
-    LOoOkpair&
-    operator >> ( const raft::order::spec &&order )
+    Kpair& operator >> ( Kernel &rhs )
     {
-        UNUSED( order );
-        auto *ptr( new LOoOkpair( *this ) );
+        auto *ptr( new Kpair( this, &rhs ) );
         return( *ptr );
     }
 
-    core_id_t getCoreAssignment() noexcept
+    /**
+     * k0 >> k1_ptr
+     * k0 >> kernel_maker< K >()
+     */
+    Kpair& operator >> ( Kernel *rhs )
     {
-        return( core_assign );
+        auto *ptr( new Kpair( this, rhs ) );
+        return( *ptr );
     }
 
     /**
-     * PORTS - input and output, use these to interact with the
-     * outside world.
+     * k0 >> k1["in0"]
      */
-    Port input = { this };
-    Port output = { this };
-
-
-    constexpr void setCore( const core_id_t id )
+    Kpair& operator >> ( const KernelPort &rhs )
     {
-        core_assign = id;
-        return;
+        KernelPort *meta_ptr( new KernelPort( rhs ) );
+        auto *ptr( new Kpair( this, *meta_ptr ) );
+        return( *ptr );
     }
 
-    constexpr void setAffinityGroup( const core_id_t ag )
-    {
-        affinity_group = ag;
-        return;
-    }
-
-    constexpr void setInternalAlloc()
-    {
-        internal_alloc = true;
-        return;
-    }
-
-protected:
     /**
-     *
+     * PORTS - input and output, use these to specify the connections
+     * with other kernels.
      */
-    virtual std::size_t addPort()
-    {
-        return( 0 );
-    }
+    using port_map_t = std::unordered_map< port_name_t, PortInfo >;
+    port_map_t input;
+    port_map_t output;
 
-    void allConnected()
+    bool allConnected() const
     {
         /**
          * NOTE: would normally have made this a part of the 
@@ -277,8 +192,8 @@ protected:
              * this will work if this is a string or not, name, returns a 
              * type based on what is in defs.hpp.
              */
-            const auto &port_name( it.name() );
-            const auto &port_info( input.getPortInfoFor( port_name ) );
+            const auto &port_name( it->first );
+            const auto &port_info( it->second );
             /**
              * NOTE: with respect to the inputs, the 
              * other kernel is the source arc, the 
@@ -290,8 +205,8 @@ protected:
                 ss << "Port from edge (" << "null" << " -> " << 
                     port_info.my_name << ") with kernel types (src: " << 
                     "nullptr" << "), (dst: " <<
-                    common::printClassName( *port_info.my_kernel ) << "), exiting!!\n";
-    
+                    common::printClassName( *port_info.my_kernel ) <<
+                    "), exiting!!\n";
                 throw PortUnconnectedException( ss.str() );
                     
             }
@@ -299,8 +214,8 @@ protected:
     
         for( auto it( output.begin() ); it != output.end(); ++it )
         {
-            const auto &port_name( it.name() );
-            const auto &port_info( output.getPortInfoFor( port_name ) );
+            const auto &port_name( it->first );
+            const auto &port_info( it->second );
             /**
              * NOTE: with respect to the inputs, the 
              * other kernel is the source arc, the 
@@ -311,41 +226,34 @@ protected:
                 std::stringstream ss;
                 ss << "Port from edge (" << port_info.my_name << " -> " << 
                     "null" << ") with kernel types (src: " << 
-                    common::printClassName( *port_info.my_kernel ) << "), (dst: " <<
-                    "nullptr" << "), exiting!!\n";
+                    common::printClassName( *port_info.my_kernel ) <<
+                    "), (dst: " << "nullptr" << "), exiting!!\n";
                 throw PortUnconnectedException( ss.str() );
             }
         }
     }
 
-    virtual void lock()
+    void setGroup( int g )
     {
-        /** does nothing, just need a base impl **/
-        return;
-    }
-    virtual void unlock()
-    {
-        /** does nothing, just need a base impl **/
-        return;
+        group_id = g;
     }
 
-
-    raft::port_key_type getEnabledPort()
+    const PortInfo &getInput( const port_name_t &name )
     {
-        return( raft::null_port_value );
+        return get_port( (this)->input, name );
     }
+
+    const PortInfo &getOutput( const port_name_t &name )
+    {
+        return get_port( (this)->output, name );
+    }
+
+    trigger::value_t sched_trigger = trigger::any_port;
+
+protected:
 
     /** in namespace raft **/
-    friend class map;
-    /** in global namespace **/
-    friend class ::MapBase;
-    friend class ::Schedule;
-    friend class ::GraphTools;
-    friend class ::kernel_container;
-    friend class ::basic_parallel;
-    friend class ::kpair;
-    friend class ::interface_partition;
-    friend class ::pool_schedule;
+    friend class DAG;
 
     /**
      * NOTE: doesn't need to be atomic since only one thread
@@ -360,45 +268,126 @@ protected:
         return cnt;
     }
 
-#ifdef BENCHMARK
-    static std::size_t initialized_count( int inc = 1 )
+    /**
+     * add_input - adds and initializes one or multiple input ports
+     * of the same data type for the name(s) given.
+     * @param   portnames - port_name_t
+     */
+    template < class T, class... PORTNAMES >
+    void add_input( PORTNAMES&&... portnames )
     {
-        static std::atomic< std::size_t > cnt( 0 );
-        cnt += inc;
-        return cnt;
-    }
-#endif
-
-    bool internal_alloc = false;
-
-
-    void  retire() noexcept
-    {
-        (this)->execution_done = true;
-    }
-
-    bool isRetired() noexcept
-    {
-        return( (this)->execution_done );
+        add_port_helper< T >( ( *this ), ( this )->input,
+                std::forward< PORTNAMES >( portnames )... );
     }
 
     /**
-     * these are both set to -1 by defualt, which
-     * means unset.
+     * add_output - adds and initializes one or multiple output ports
+     * of the same data type for the name(s) given.
+     * @param   portnames - port_name_t
      */
-    core_id_t core_assign = -1;
-    core_id_t affinity_group = -1;
+    template < class T, class... PORTNAMES >
+    void add_output( PORTNAMES&&... portnames )
+    {
+        add_port_helper< T >( ( *this ), ( this )->output,
+                std::forward< PORTNAMES >( portnames )... );
+    }
 
-
-    raft::schedule_behavior sched_behav = raft::any_port;
 private:
-    /** TODO, replace dup with bit vector **/
-    bool dup_enabled = false;
-    bool dup_candidate = false;
+
+    /**
+     * add_port - adds and initializes a port for the name
+     * given.  Function throw an exception if the port
+     * already exists.
+     * @param   port - port_map_t&
+     * @param   port_name - const port_name_t&
+     */
+    template < class T >
+    void add_port( port_map_t &port, const port_name_t &portname )
+    {
+        if( port.end() != port.find( portname ) )
+        {
+            std::stringstream ss;
+            ss << "FATAL ERROR: port \"" << portname << "\" already exists!";
+            throw PortAlreadyExists( ss.str() );
+        }
+
+        /**
+         * we'll have to make a port info object first and pass it by copy
+         * to the portmap.  Perhaps re-work later with pointers, but for
+         * right now this will work and it doesn't necessarily have to
+         * be performant since its only executed once.
+         */
+        PortInfo pi( typeid( T ) );
+        pi.my_kernel = this;
+
+        pi.my_name = portname;
+
+        port.insert( std::make_pair( portname, pi ) );
+
+        /**
+         * sadly have to do the initialization for all runtimes structures
+         * earlier here because T is available to the compiler only, later
+         * runtime would have no way to retrive this, but capture T in
+         * instantiated template class right now */
+        port[ portname ].typeSpecificRuntimeInit< T >();
+
+        return;
+    }
+
+    static PortInfo &get_port( port_map_t &port,
+                               const port_name_t &name )
+    {
+        if( null_port_value == name )
+        {
+            if( 0 == port.size() )
+            {
+                throw PortNotFoundException(
+                        "At least one port must be defined" );
+            }
+            else if( 1 < port.size() )
+            {
+                throw AmbiguousPortAssignmentException(
+                        "One port expected, more than one found!" );
+            }
+            return port.begin()->second;
+        }
+        else if( port.end() == port.find( name ) )
+        {
+            std::stringstream ss;
+            ss << "Port not found for name \"" << name << "\"";
+            throw PortNotFoundException( ss.str() );
+        }
+        return port[ name ];
+    }
+
+    static void set_port( port_map_t &port, const port_name_t &name,
+                          const PortInfo &other )
+    {
+        PortInfo &p( port[ name ] );
+        if( nullptr != p.other_kernel )
+        {
+            throw PortDoubleInitializeException( "Port double initialized" );
+        }
+        p.other_kernel = other.my_kernel;
+        p.other_name = other.my_name;
+        p.other_port = &other;
+    }
+
+    void set_input( const port_name_t &name, const PortInfo &other )
+    {
+        set_port( input, name, other );
+    }
+
+    void set_output( const port_name_t &name, const PortInfo &other )
+    {
+        set_port( output, name, other );
+    }
+
     const std::size_t kernel_id;
 
-    bool execution_done = false;
-};
+    int group_id; /* for the result from partition */
+
+}; /** end Kernel decl **/
 
 
 template < class T /** kernel type **/,
@@ -406,10 +395,9 @@ template < class T /** kernel type **/,
 T* kernel_maker( Args&&... params )
 {
     auto *k( new T( std::forward< Args >( params )... ) );
-    k->setInternalAlloc();
     return k;
 }
 
 
 } /** end namespace raft */
-#endif /* END RAFTKERNEL_HPP */
+#endif /* END RAFT_KERNEL_HPP */

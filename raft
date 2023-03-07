@@ -1,10 +1,11 @@
 /**
- * raft header file - includes all files within $(prefix)/include/raft dir 
- * @author: Jonathan Beard
- * @version: Fri Sep 26 10:00:21 2014
- * 
+ * raft header file - includes all files within $(prefix)/include/raft dir
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tue Mar 07 10:50:21 2023
+ *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2014 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -21,60 +22,40 @@
 #define _RAFT_HPP_  1
 
 /** raft proper includes **/
-#include "./raftinc/allocate.hpp"
 #include "./raftinc/graphtools.hpp"
 #include "./raftinc/kernel.hpp"
-#include "./raftinc/map.hpp"
-#include "./raftinc/port.hpp"
+#include "./raftinc/dag.hpp"
 #include "./raftinc/port_info.hpp"
-#include "./raftinc/port_info_types.hpp"
-#include "./raftinc/schedule.hpp"
-#include "./raftinc/simpleschedule.hpp"
-#include "./raftinc/dynalloc.hpp"
-#include "./raftinc/stdalloc.hpp"
 #include "./raftinc/rafttypes.hpp"
-#include "./raftinc/kernel_all.hpp"
-
-/** parallel headers **/
-#include "./raftinc/parallelk.hpp"
-#include "./raftinc/splitmethod.hpp"
-#include "./raftinc/roundrobin.hpp"
-#include "./raftinc/split.tcc"
-#include "./raftinc/join.tcc"
-
-/** c++stdlib utilities **/
-#include "./raftinc/readeach.tcc"
-#include "./raftinc/writeeach.tcc"
-
-/** c++stdlib like utilities **/
-#include "./raftinc/foreach.tcc"
-
-/** helper functions **/
-#include "./raftinc/select.tcc"
-
-/** fifo includes **/
-#include "./raftinc/blocked.hpp"
-#include "./raftinc/fifo.hpp"
-#include "./raftinc/pointer.hpp"
-#include "./raftinc/ringbuffertypes.hpp"
-#include "./raftinc/signalvars.hpp"
-#include "./raftinc/units.hpp"
-
-/** fifo templates **/
-#include "./raftinc/bufferdata.tcc"
-#include "./raftinc/fifoabstract.tcc"
-//#include "./raftinc/randomstring.tcc"
-#include "./raftinc/ringbuffer.tcc"
-#include "./raftinc/ringbufferbase.tcc"
-#include "./raftinc/ringbufferheap.tcc"
-#include "./raftinc/ringbufferinfinite.tcc"
-
-#include "./raftinc/lambdak.tcc"
+#include "./raftinc/runtime.hpp"
+#include "./raftinc/partition/partition.hpp"
+#include "./raftinc/allocate/allocate.hpp"
+#include "./raftinc/schedule/schedule.hpp"
+#include "./raftinc/partition/partitioners.hpp"
+#include "./raftinc/allocate/allocators.hpp"
+#include "./raftinc/schedule/schedulers.hpp"
+#include "./raftinc/runtimes.hpp"
 
 /** exceptions **/
-#include "./raftinc/portexception.hpp"
-#include "./raftinc/kernelexception.hpp"
-#include "./raftinc/mapexception.hpp"
+#include "./raftinc/exceptions.hpp"
+
+/** utilities **/
+#include "./raftinc/utils/parallelk.hpp"
+#include "./raftinc/utils/readeach.tcc"
+#include "./raftinc/utils/writeeach.tcc"
+
+/** fifo includes **/
+#include "./raftinc/allocate/fifo.hpp"
+#include "./raftinc/allocate/buffer/blocked.hpp"
+#include "./raftinc/allocate/buffer/pointer.hpp"
+#include "./raftinc/allocate/buffer/buffertypes.hpp"
+#include "./raftinc/allocate/buffer/signal.hpp"
+
+/** fifo templates **/
+#include "./raftinc/allocate/buffer/data.tcc"
+#include "./raftinc/allocate/fifoabstract.tcc"
+#include "./raftinc/allocate/ringbuffer.tcc"
+
 
 
 #endif /* END _RAFT_HPP_ */

@@ -1,6 +1,6 @@
 /** io stuffs for raft **/
 
-#include "./raftinc/filechunk.tcc"
-#include "./raftinc/chunkiterator.tcc"
-#include "./raftinc/fileio.tcc"
-#include "./raftinc/print.tcc"
+#include "./raftinc/utils/filechunk.tcc"
+#include "./raftinc/utils/chunkiterator.tcc"
+#include "./raftinc/utils/fileio.tcc"
+#include "./raftinc/utils/print.tcc"

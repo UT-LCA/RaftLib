@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cassert>
 
-#include "alloc_traits.tcc"
+#include "allocate/buffer/inline_traits.tcc"
 
 template < std::size_t N > struct varlen
 {
@@ -13,7 +13,7 @@ template < std::size_t N > struct varlen
 int
 main()
 {
-   if( fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE > >::value != true )
+   if( Buffer::fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE > >::value != true )
    {
        std::cerr << "fail test\n";
        exit( EXIT_FAILURE );

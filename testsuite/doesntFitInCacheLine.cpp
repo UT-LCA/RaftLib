@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cassert>
 
-#include "alloc_traits.tcc"
+#include "allocate/buffer/inline_traits.tcc"
 
 template < std::size_t N > struct varlen
 {
@@ -13,8 +13,8 @@ template < std::size_t N > struct varlen
 int
 main()
 {
-   assert( fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE > >::value );
+   assert( Buffer::fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE > >::value );
    assert( 
-      fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE + 100 > >::value == false );
+      Buffer::fits_in_cache_line< varlen< L1D_CACHE_LINE_SIZE + 100 > >::value == false );
    exit( EXIT_SUCCESS );
 }

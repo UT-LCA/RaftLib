@@ -1,10 +1,11 @@
 /**
- * defs.hpp - 
- * @author: Jonathan Beard
- * @version: Sun Feb  7 05:46:48 2016
- * 
+ * defs.hpp -
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tuw Mar  7 13:30:48 2023
+ *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2021 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -17,16 +18,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTDEFS_HPP
-#define RAFTDEFS_HPP  1
+#ifndef RAFT_DEFS_HPP
+#define RAFT_DEFS_HPP  1
 #include <set>
+#include <unordered_set>
 #include <map>
+#include <unordered_map>
 #include <functional>
 #include <type_traits>
 #include <cstdint>
 #include <vector>
 #include <utility>
-#include <climits>
 #include <bitset>
 #include <memory>
 #include <string>
@@ -48,87 +50,39 @@
 #define AFFINITY_NAMESPACE raft
 #endif
 
-
-
-
-#if (! defined STRING_NAMES) || (STRING_NAMES == 0)
-#include "hh.hpp"
-#endif
-
-namespace raft
-{
-    /** predeclare raft::kernel for kernel_list_t below **/
-    class kernel;
-    /** also parsemap_ptr smart ptr obj used in map and streamparse **/
-    class parsemap;
-/** use this to turn on string names vs. off **/
-/**
- * Notes: For port_key_type, there's the original string version
- * which turns out to be rather cumbersome for very small kernels,
- * and then there's the version that does hashing of strings then 
- * uses the 64b hash of that string. There is a tiny change of port
- * name collision with the 64b version, however, it's incredibly 
- * unlikely that this would occur. 
- */
-#ifdef STRING_NAMES
-    using port_key_type = std::string;
-    const static raft::port_key_type null_port_value = "";
+#ifndef UNUSED
+#ifdef __clang__
+#define UNUSED( x ) (void)(x)
 #else
-    /**
-     * set max length of the string for the fixed length representation
-     * of the port name, will be used for debug only, doesn't really
-     * constrain the length used by programmers when typing port names. 
-     */
-    const static std::uint32_t  port_name_max_length = 64;
-    /**
-     * define the type of the port key, this is the value typed in by the
-     * programmer to name ports. From the programmer perspective it'll look
-     * like a string. 
-     */
-    using port_key_type = highway_hash::hash_t::val_type;
-    
-    template < std::size_t N > using name_struct_t = highway_hash::data_t< N >;
-    /**
-     * just like the string, we need a value for uninitialized port
-     * types. 
-     */
-    const static raft::port_key_type null_port_value = 
-        std::numeric_limits< raft::port_key_type >::max();
-    /**
-     * fixed length name representation containing both the hash value
-     * and the string name of the hash (although it is truncated to the
-     * max selected length above. 
-     */
-    using port_key_name_t = highway_hash::data_fixed_t< raft::port_name_max_length >;
+#define UNUSED( x )[&x]{}()
 #endif
-    using parsemap_ptr = std::shared_ptr< raft::parsemap >;
-} /** end namespace raft **/
-
-#ifndef STRING_NAMES
-    /**
-     * use this to get a constexpr 64b unsigned hash
-     * of a string. Must compile with C++20 for this to
-     * work given it requires return type template type
-     * deduction for user-defined string literals. 
-     * e.g. "foobar"_port, hashes the string at compile
-     * time. Currently only g++ has this capability, maybe
-     * the latest head of clang, apple clang does not. 
-     * The return type is a struct with the string, 
-     * the length, and the hash value. e.g.
-     * auto data( "foobar"_port); then the field data.val
-     * contains your hash. 
-     */
-    template < raft::name_struct_t port_name >
-    static
-    constexpr
-    auto
-    operator""_port() 
-    {
-        return( port_name );
-    }
+//FIXME need to double check to see IF THIS WORKS ON MSVC
 #endif
 
-template < typename T > 
+#ifndef L1D_CACHE_LINE_SIZE
+
+#ifdef _MSC_VER
+#define STRINGIZE_HELPER(x) #x
+#define STRINGIZE(x) STRINGIZE_HELPER(x)
+#define WARNING(desc) message(__FILE__ "(" STRINGIZE(__LINE__) ") : Warning: " #desc)
+#pragma WARNING(Using 64 bytes as default cache line size, to fix recompile with -DL1D_CACHE_LINE_SIZE=XXX)
+#else
+#warning "Using 64 bytes as default cache line size, to fix recompile with -DL1D_CACHE_LINE_SIZE=XXX"
+#endif
+
+#define L1D_CACHE_LINE_SIZE 64
+
+#endif
+
+/**
+ * Note: there is a NICE define that can be uncommented
+ * below if you want sched_yield called when waiting for
+ * writes or blocking for space, otherwise blocking will
+ * actively spin while waiting.
+ */
+#define NICE 1
+
+template < typename T >
     using set_t = std::set< T >;
 
 using ptr_set_t = set_t< std::uintptr_t >;
@@ -138,58 +92,88 @@ using ptr_t = std::uintptr_t;
 
 using core_id_t = std::int64_t;
 
-/** type for edge weights when giving to Scotch partitioner **/
-using weight_t  = std::int32_t;
-/** type for edge id, largely used by graph.tcc and partition_scotch.hpp **/
-using edge_id_t = std::int32_t;
 
-
-#ifndef UNUSED 
-#ifdef __clang__
-#define UNUSED( x ) (void)(x)
-#else
-#define UNUSED( x )[&x]{}()
-#endif
-//FIXME need to double check to see IF THIS WORKS ON MSVC
-#endif
-
-
-/** type for return from += you'll get an iterator to one of these **/
-using kernel_list_t  = std::vector< std::reference_wrapper< raft::kernel > >;
-using kernel_it_pair = std::pair< 
-                                    typename kernel_list_t::const_iterator,
-                                    typename kernel_list_t::const_iterator
-                                >;
-
-namespace raft
-{
-    using byte_t = std::uint8_t;
-    const static std::uint8_t bits_per_byte = CHAR_BIT;
-}
-
-/** system config defs **/
-namespace raft
-{
-
-
-namespace order
-{
-enum spec : std::uint8_t { 
-    in = 0, 
-    out, 
-    ORDER_N 
-};
-} /** end namespace order **/
+#endif /* END RAFT_DEFS_HPP */
 
 /**
- * these are to enable the sub-kernel behavior where 
- * the kernel specifies that all ports must be active 
- * before firing the kernel...by "active" we mean that
- * all ports have some data.
+ * internaldefs.hpp - cross-platform align and unlikely defines
+ * @author: Jonathan Beard
+ * @version: Mon Apr  3 04:49:41 2017
+ *
+ * Copyright 2017 Jonathan Beard
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-enum schedule_behavior : std::uint8_t { any_port = 0,
-                                        all_port = 1 };
+#ifndef RAFTINTERNALDEFS_HPP
+#define RAFTINTERNALDEFS_HPP  1
 
-} /** end namespace raft **/
+#ifdef _MSC_VER
+#    if (_MSC_VER >= 1800)
+#        define __alignas_is_defined 1
+#    endif
+#    if (_MSC_VER >= 1900)
+#        define __alignof_is_defined 1
+#    endif
+#else
+#    ifndef __APPLE__
+#    include <cstdalign>   // __alignas/of_is_defined directly from the implementation
+#    endif
+#endif
 
-#endif /* END RAFTDEFS_HPP */
+/**
+ * should be included, but just in case there are some
+ * compilers with only experimental C++11 support still
+ * running around, check macro..turns out it's #ifdef out
+ * on GNU G++ so checking __cplusplus flag as indicated
+ * by https://goo.gl/JD4Gng
+ */
+#if ( __alignas_is_defined == 1 ) || ( __cplusplus >= 201103L )
+#    define ALIGN(X) alignas(X)
+#else
+#    pragma message("C++11 alignas unsupported :( Falling back to compiler attributes")
+#    ifdef __GNUG__
+#        define ALIGN(X) __attribute__ ((aligned(X)))
+#    elif defined(_MSC_VER)
+#        define ALIGN(X) __declspec(align(X))
+#    else
+#        error Unknown compiler, unknown alignment attribute!
+#    endif
+#endif
+
+#if ( __alignas_is_defined == 1 ) || ( __cplusplus >= 201103L )
+#    define ALIGNOF(X) alignof(x)
+#else
+#    pragma message("C++11 alignof unsupported :( Falling back to compiler attributes")
+#    ifdef __GNUG__
+#        define ALIGNOF(X) __alignof__ (X)
+#    elif defined(_MSC_VER)
+#        define ALIGNOF(X) __alignof(X)
+#    else
+#        error Unknown compiler, unknown alignment attribute!
+#    endif
+#endif
+
+
+#if (defined __linux) || (defined __APPLE__ )
+
+#define R_LIKELY( var ) __builtin_expect( var, 1 )
+#define R_UNLIKELY( var ) __builtin_expect( var, 0 )
+
+#else
+
+#define R_LIKELY( var ) var
+#define R_UNLIKELY( var ) var
+
+#endif
+
+#endif /* END RAFTINTERNALDEFS_HPP */

@@ -1,8 +1,9 @@
 /**
  * port_info.hpp -
- * @author: Jonathan Beard
- * @version: Wed Sep  3 20:22:56 2014
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tue Mar  7 12:49:56 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2014 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,144 +18,83 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTPORT_INFO_HPP
-#define RAFTPORT_INFO_HPP  1
+#ifndef RAFT_PORT_INFO_HPP
+#define RAFT_PORT_INFO_HPP  1
 #include <typeinfo>
 #include <typeindex>
-#include <string>
-#include <map>
-#include <functional>
 #include <cstddef>
-#include <memory>
-#include <cassert>
 
-#include "alloc_defs.hpp"
-#include "ringbuffertypes.hpp"
-#include "port_info_types.hpp"
-#include "fifo.hpp"
+#include "allocate/fifo.hpp"
+#include "allocate/fifofunctor.hpp"
+#include "allocate/ringbuffer.tcc"
+#include "allocate/buffer/buffertypes.hpp"
 
-namespace raft{
-    class kernel;
-}
+namespace raft
+{
+
+class Kernel;
+class Allocate;
+
+/* put the type specific port info data structures used
+ * by all runtimes here.
+ */
+struct PortInfo4Runtime
+{
+    /* AllocateFIFO */
+    FIFOFunctor *fifo_functor;
+    FIFO *fifo;
+    //using FIFO_constructor =
+    //    FIFO* ( std::size_t /** n_items **/,
+    //            std::size_t /** alignof */,
+    //            void* /** data struct **/ );
+    //FIFO_constructor *fifo_const;
+
+    template< class T >
+    void init()
+    {
+        //fifo_const =
+        //    RingBuffer< T, Buffer::Type::Heap, false >::make_new_fifo;
+        fifo_functor = new FIFOFunctorT< T >();
+    }
+};
 
 struct PortInfo
 {
-    PortInfo() : type( typeid( ( *this ) ) )
-    {
-    }
+    PortInfo() : type( typeid( ( *this ) ) ) {}
 
-    PortInfo( const std::type_info &the_type ) : type( the_type )
-    {
-    }
+    PortInfo( const std::type_info &the_type ) : type( the_type ) {}
 
-    PortInfo( const std::type_info &the_type,
-              void * const ptr,
-              const std::size_t nitems,
-              const std::size_t start_index ) : type( the_type ),
-                                                existing_buffer( ptr ),
-                                                nitems( nitems ),
-                                                start_index( start_index )
-    {
-    }
-
-    PortInfo( const PortInfo &other ) : type( other.type )
-    {
-        fifo_a = other.fifo_a;
-        fifo_b = other.fifo_b;
-        my_kernel = other.my_kernel;
-        my_name = other.my_name;
-        other_kernel = other.other_kernel;
-        other_name = other.other_name;
-        out_of_order = other.out_of_order;
-        existing_buffer= other.existing_buffer;
-        nitems = other.nitems;
-        start_index = other.start_index;
-        split_func = other.split_func;
-        join_func = other.join_func;
-        fixed_buffer_size = other.fixed_buffer_size;
-        const_map = other.const_map;
-    }
+    PortInfo( const PortInfo &other ) :
+        type( other.type ),
+        my_kernel( other.my_kernel ), my_name( other.my_name ),
+        other_kernel( other.other_kernel ), other_name( other.other_name ) {}
 
     virtual ~PortInfo() = default;
 
-    /**
-     * getFIFO - call this function to get a FIFO, lock free but
-     * checks to make sure an update isn't occuring.  The ptr returned
-     * will be fine to use even if an update occurs while the ptr
-     * is in use since it won't be deleted from the receiving end
-     * until the FIFO is fully emptied.
-     * @return FIFO*
-     */
-    FIFO* getFIFO()
+    template< class T >
+    void typeSpecificRuntimeInit()
     {
-        struct
-        {
-            FIFO *a;
-            FIFO *b;
-        } copy = { fifo_a, fifo_b };
-        /** for most architectures that don't need this,
-         * it'll be optimized out after the first iteration **/
-        while( copy.a != copy.b )
-        {
-            copy.a = fifo_a;
-            copy.b = fifo_b;
-        }
-        return( copy.a );
+        runtime_info.init< T >();
     }
 
-    /**
-     * setFIFO - call this funciton to set a FIFO, updates both
-     * pointers at the same time as opposed to doing it manually
-     * @param   in - valid FIFO*, must not be nullptr
-     */
-    void setFIFO( FIFO * const in )
-    {
-        assert( in != nullptr );
-        fifo_a = in;
-        fifo_b = in;
-    }
-
-    FIFO *fifo_a = nullptr;
-    FIFO *fifo_b = nullptr;
     /**
      * the type of the port.  regardless of if the buffer itself
      * is impplemented or not.
      */
     std::type_index type;
 
-    /**
-     * const_map - stores "builder" objects for each of the
-     * currenty implemented ring buffer types so that when
-     * the mapper is allocating ring buffers it may allocate
-     * one with the proper type.  The first key is self explanatory
-     * for the most part, storing the ring buffer type.  The
-     * second internal map key is "instrumented" vs. not.
-     */
-    std::map< Type::RingBufferType,
-        std::shared_ptr< instr_map_t > > const_map;
+    Kernel *my_kernel = nullptr;
+    port_name_t my_name = null_port_value;
 
+    Kernel *other_kernel = nullptr;
+    port_name_t other_name = null_port_value;
 
-    /**
-     * NOTE: These are allocated by the run-time but not
-     * destroyed unless they're used...they'll of course
-     * be destroyed upon program termination.
-     */
-    split_factory_t split_func = nullptr;
-    join_factory_t join_func = nullptr;
+    const PortInfo *other_port = nullptr;
 
-    raft::kernel *my_kernel = nullptr;
-    raft::port_key_type my_name = raft::null_port_value;
+    Allocate *alloc = nullptr;
 
-    raft::kernel *other_kernel = nullptr;
-    raft::port_key_type other_name = raft::null_port_value;
-
-    /** runtime settings **/
-    bool use_my_allocator = false;
-    bool out_of_order = false;
-    memory_type mem = heap;
-    void *existing_buffer = nullptr;
-    std::size_t nitems = 0;
-    std::size_t start_index = 0;
-    std::size_t fixed_buffer_size = 0;
+    PortInfo4Runtime runtime_info;
 };
-#endif /* END RAFTPORT_INFO_HPP */
+
+} /** end namespace raft **/
+#endif /* END RAFT_PORT_INFO_HPP */

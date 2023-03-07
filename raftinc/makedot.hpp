@@ -1,8 +1,9 @@
 /**
  * makedot.hpp -
- * @author: Jonathan Beard
- * @version: Sun Oct  4 09:15:09 2020
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tue Mar  7 13:40:09 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2020 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,14 +18,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef MAKEDOT_HPP
-#define MAKEDOT_HPP  1
+#ifndef RAFT_MAKEDOT_HPP
+#define RAFT_MAKEDOT_HPP  1
 #include <ostream>
 #include <sstream>
-#include "kernelkeeper.tcc"
+#include "defs.hpp"
 
 namespace raft
 {
+
+/**
+ * forward declaration
+ */
+template< class CONTAINER >
+class DotMaker;
 
 /** some helper functions for recursive field adding **/
 template < class T >
@@ -42,20 +49,19 @@ std::string field_helper( const T &&str, TS&&... str_list ) {
     return( std::move< std::string >( ss.str() ) );
 }
 
-class make_dot
+template < class CONTAINER, class T = raft::DotMaker< CONTAINER > >
+void make_dot( std::ostream &os, CONTAINER &all_ks, CONTAINER &src_ks )
+{
+    T maker( all_ks, src_ks );
+    maker.run( os );
+    return;
+}
+
+template< class CONTAINER >
+class DotMaker
 {
 public:
-
-    template < class T = raft::make_dot > static
-    void run( std::ostream &os, kernelkeeper &all_ks, kernelkeeper &src_ks )
-    {
-        T dot_maker( all_ks, src_ks );
-        dot_maker._run( os );
-        return;
-    }
-
-protected:
-    make_dot( kernelkeeper& all_ks, kernelkeeper& src_ks ) :
+    DotMaker( CONTAINER& all_ks, CONTAINER& src_ks ) :
         all_kernels( all_ks ), source_kernels( src_ks )
     {
         auto *height_env( std::getenv( "GEN_DOT_HEIGHT" ) );
@@ -70,7 +76,7 @@ protected:
         }
     }
 
-    virtual ~make_dot() = default;
+    virtual ~DotMaker() = default;
 
     /**
      * call this to kick off graph construction,
@@ -80,7 +86,7 @@ protected:
      * below to redefine this behavior for sub-classes
      * if you want differing behavior.
      */
-    virtual void _run( std::ostream &stream )
+    virtual void run( std::ostream &stream )
     {
         //make dot header
         generate_preamble( stream );
@@ -93,32 +99,28 @@ protected:
         return;
     }
 
+protected:
+
     virtual void generate_preamble( std::ostream &stream )
     {
         stream << "digraph G{\n";
         stream << "\t";
-        stream << raft::make_dot::generate_field( "size", height, width ) <<
-            ";\n";
+        stream << generate_field( "size", height, width ) << ";\n";
         return;
     }
     virtual void generate_vertex_list( std::ostream &stream )
     {
-        auto &c( all_kernels.acquire() );
-        for( auto &k /** kernel **/ : c /** in container **/ )
+        for( auto &k /** kernel **/ : all_kernels /** in container **/ )
         {
-            stream << "\t" << k->get_id();
+            stream << "\t" << k->getId();
             stream << "[";
-            stream <<
-                raft::make_dot::generate_field( "label",
-                                                common::printClassName( *k ) );
+            stream << generate_field( "label", common::printClassName( *k ) );
             stream << ", ";
-            stream << raft::make_dot::generate_field( "shape", "ellipse" );
+            stream << generate_field( "shape", "ellipse" );
             stream << ", ";
-            stream << raft::make_dot::generate_field( "fontname",
-                                                      "Helvetica" );
+            stream << generate_field( "fontname", "Helvetica" );
             stream << "];\n";
         }
-        all_kernels.release();
         return;
     }
     virtual void generate_edge_list( std::ostream &stream )
@@ -129,32 +131,18 @@ protected:
                              void *data ) -> void
         {
             auto *stream_ptr( reinterpret_cast< std::ostream* >( data ) );
-            (*stream_ptr) << "\t" << a.my_kernel->get_id() << " -> ";
-            (*stream_ptr) << b.my_kernel->get_id();
+            (*stream_ptr) << "\t" << a.my_kernel->getId() << " -> ";
+            (*stream_ptr) << b.my_kernel->getId();
             (*stream_ptr) << "[";
             std::stringstream ss;
             ss << a.my_name << " to " << b.my_name  << " (";
             ss << common::printClassNameFromStr( a.type.name() ) + ")";
             ss << "\n";
-            ss << "OoO=" << std::boolalpha << a.out_of_order << "\n";
-            ss << "custom allocator=" << std::boolalpha <<
-                a.use_my_allocator << "\n";
-            ss << "queue type=" << Type::type_prints[ a.mem ] << "\n";
-            if( a.existing_buffer != nullptr )
-            {
-                ss << "existing_buffer\n";
-                ss << "\tsize: " << a.nitems << "\n";
-                ss << "\tstart_offset: " << a.start_index << "\n";
-                ss << "\tfixed_buffer_size: " << a.fixed_buffer_size << "\n";
-            }
-            (*stream_ptr) << raft::make_dot::generate_field( "label",
-                                                             ss.str() );
+            (*stream_ptr) << generate_field( "label", ss.str() );
             (*stream_ptr) << "];\n";
         };
 
-        auto &c( source_kernels.acquire() );
-        GraphTools::BFS( c, dot_func, (void*) &stream );
-        source_kernels.release();
+        GraphTools::BFS( source_kernels, dot_func, (void*) &stream );
         return;
     }
     virtual void generate_close( std::ostream &stream )
@@ -183,10 +171,10 @@ private:
      * functionality at the ``oar'' level in order
      * to propagate the graph.
      */
-    kernelkeeper &all_kernels;
-    kernelkeeper &source_kernels;
+    CONTAINER &all_kernels;
+    CONTAINER &source_kernels;
 };
 
 } /** end namespace raft **/
 
-#endif /* END MAKEDOT_HPP */
+#endif /* END RAFT_MAKEDOT_HPP */

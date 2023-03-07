@@ -30,145 +30,168 @@ namespace test
 {
 
 #ifndef STRING_NAMES
-template < typename T > class generate : public raft::kernel
+template < typename T > class generate : public raft::Kernel
 {
 public:
-   generate( std::int64_t count = 1000 ) : raft::kernel(),
-                                         count( count )
-   {
-      output.addPort< T >( "number_stream"_port );
-   }
+    generate( std::int64_t count = 1000 ) : raft::Kernel(),
+                                          count( count )
+    {
+        add_output< T >( "number_stream"_port );
+    }
 
-   virtual raft::kstatus run()
-   {
-      if( count-- > 1 )
-      {
-         auto &ref( output[ "number_stream"_port ].template allocate< T >() );
-         ref = static_cast< T >( (this)->count );
-         output[ "number_stream"_port ].send();
-         return( raft::proceed );
-      }
-      /** else **/
-      auto &ref( output[ "number_stream"_port].template allocate< T >() );
-      ref = static_cast< T >( (this)->count );
-      output[ "number_stream"_port].send( raft::eof );
-      return( raft::stop );
-   }
+    virtual bool pop( raft::Task *task, bool dryrun )
+    {
+        return false;
+    }
+
+    virtual bool allocate( raft::Task *task, bool dryrun )
+    {
+        return task->allocate( "number_stream"_port, dryrun );
+    }
+
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut )
+    {
+        bufOut[ "number_stream"_port ].get< T >() = static_cast< T >( (this)->count );
+        if( count-- > 1 )
+        {
+            return( raft::kstatus::proceed );
+        }
+        /** else **/
+        return( raft::kstatus::stop );
+    }
 
 private:
-   std::int64_t count;
+    std::int64_t count;
 };
 
 
-template <> class generate< std::string > : public raft::kernel
+template <> class generate< std::string > : public raft::Kernel
 {
 public:
-   generate( std::int64_t count = 1000 ) : raft::kernel(),
-                                           count( count ),
-                                           gen( 15 ),
-                                           distrib( 65, 90 )
-   {
-      output.addPort< std::string >( "number_stream"_port );
-   }
+    generate( std::int64_t count = 1000 ) : raft::Kernel(),
+                                            count( count ),
+                                            gen( 15 ),
+                                            distrib( 65, 90 )
+    {
+        add_output< std::string >( "number_stream"_port );
+    }
 
-   virtual raft::kstatus run()
-   {
-      char str[ 8 ];
-      str[7]='\0';
-      for( auto i( 0 ); i < 7; i++ )
-      {
-         str[ i ] = (char) distrib( gen );
-      }
-      if( count-- > 1 )
-      {
-         
-         auto &ref( output[ "number_stream"_port ].template allocate< std::string >() );
-         ref = static_cast< std::string >( str );
-         output[ "number_stream"_port].send();
-         return( raft::proceed );
-      }
-      /** else **/
-      auto &ref( output[ "number_stream"_port ].template allocate< std::string >() );
-      ref = static_cast< std::string >( str );
-      output[ "number_stream"_port ].send( raft::eof );
-      return( raft::stop );
-   }
+    virtual bool pop( raft::Task *task, bool dryrun )
+    {
+        return false;
+    }
+
+    virtual bool allocate( raft::Task *task, bool dryrun )
+    {
+        return task->allocate( "number_stream"_port, dryrun );
+    }
+
+    virtual raft::kstatus compute()
+    {
+        char str[ 8 ];
+        str[7]='\0';
+        for( auto i( 0 ); i < 7; i++ )
+        {
+            str[ i ] = (char) distrib( gen );
+        }
+        bufOut[ "number_stream"_port ].get< std::string >() =
+            static_cast< std::string >( str );
+        if( count-- > 1 )
+        {
+            return( raft::kstatus::proceed );
+        }
+        /** else **/
+        return( raft::kstatus::stop );
+    }
 
 private:
-   std::int64_t count;
-   std::mt19937 gen;
-   std::uniform_int_distribution<> distrib;
+    std::int64_t count;
+    std::mt19937 gen;
+    std::uniform_int_distribution<> distrib;
 };
 
 #else
-template < typename T > class generate : public raft::kernel
+template < typename T > class generate : public raft::Kernel
 {
 public:
-   generate( std::int64_t count = 1000 ) : raft::kernel(),
-                                         count( count )
-   {
-      output.addPort< T >( "number_stream" );
-   }
+    generate( std::int64_t count = 1000 ) : raft::Kernel(),
+                                          count( count )
+    {
+        add_output< T >( "number_stream" );
+    }
 
-   virtual raft::kstatus run()
-   {
-      if( count-- > 1 )
-      {
-         auto &ref( output[ "number_stream" ].template allocate< T >() );
-         ref = static_cast< T >( (this)->count );
-         output[ "number_stream" ].send();
-         return( raft::proceed );
-      }
-      /** else **/
-      auto &ref( output[ "number_stream"].template allocate< T >() );
-      ref = static_cast< T >( (this)->count );
-      output[ "number_stream"].send( raft::eof );
-      return( raft::stop );
-   }
+    virtual bool pop( raft::Task *task, bool dryrun )
+    {
+        return true;
+    }
+
+    virtual bool allocate( raft::Task *task, bool dryrun )
+    {
+        return task->allocate( "number_stream", dryrun );
+    }
+
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut )
+    {
+        bufOut[ "number_stream" ].get< T >() = static_cast< T >( (this)->count );
+        if( count-- > 1 )
+        {
+            return( raft::kstatus::proceed );
+        }
+        /** else **/
+        return( raft::kstatus::stop );
+    }
 
 private:
-   std::int64_t count;
+    std::int64_t count;
 };
 
 
-template <> class generate< std::string > : public raft::kernel
+template <> class generate< std::string > : public raft::Kernel
 {
 public:
-   generate( std::int64_t count = 1000 ) : raft::kernel(),
-                                           count( count ),
-                                           gen( 15 ),
-                                           distrib( 65, 90 )
-   {
-      output.addPort< std::string >( "number_stream" );
-   }
+     generate( std::int64_t count = 1000 ) : raft::Kernel(),
+                                             count( count ),
+                                             gen( 15 ),
+                                             distrib( 65, 90 )
+     {
+         add_output< std::string >( "number_stream" );
+     }
 
-   virtual raft::kstatus run()
-   {
-      char str[ 8 ];
-      str[7]='\0';
-      for( auto i( 0 ); i < 7; i++ )
-      {
-         str[ i ] = (char) distrib( gen );
-      }
-      if( count-- > 1 )
-      {
-         
-         auto &ref( output[ "number_stream" ].template allocate< std::string >() );
-         ref = static_cast< std::string >( str );
-         output[ "number_stream"].send();
-         return( raft::proceed );
-      }
-      /** else **/
-      auto &ref( output[ "number_stream" ].template allocate< std::string >() );
-      ref = static_cast< std::string >( str );
-      output[ "number_stream" ].send( raft::eof );
-      return( raft::stop );
-   }
+     virtual bool pop( raft::Task *task, bool dryrun )
+     {
+         return false;
+     }
+
+     virtual bool allocate( raft::Task *task, bool dryrun )
+     {
+         return task->allocate( "number_stream", dryrun );
+     }
+
+     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                             raft::StreamingData &bufOut )
+     {
+         char str[ 8 ];
+         str[7]='\0';
+         for( auto i( 0 ); i < 7; i++ )
+         {
+             str[ i ] = (char) distrib( gen );
+         }
+         bufOut[ "number_stream" ].get< std::string >() =
+             static_cast< std::string >( str );
+         if( count-- > 1 )
+         {
+             return( raft::kstatus::proceed );
+         }
+         /** else **/
+         return( raft::kstatus::stop );
+    }
 
 private:
-   std::int64_t count;
-   std::mt19937 gen;
-   std::uniform_int_distribution<> distrib;
+    std::int64_t count;
+    std::mt19937 gen;
+    std::uniform_int_distribution<> distrib;
 };
 
 #endif

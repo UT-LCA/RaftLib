@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <array>
-#include "alloc_traits.tcc"
+#include "allocate/buffer/inline_traits.tcc"
 #include "defs.hpp"
 #include "foodef.tcc"
 
@@ -20,35 +20,35 @@
 int
 main()
 {
-    if( fits_in_cache_line< int[ 32 ] >::value != false )
+    if( Buffer::fits_in_cache_line< int[ 32 ] >::value != false )
     {
         return( EXIT_FAILURE );
     }
     /** true cases **/
-    if( ext_alloc< int[32] >::value != true )
+    if( Buffer::ext_alloc< int[32] >::value != true )
     {
         return( EXIT_FAILURE );
     }
-    if( ext_alloc< foo< 100 > >::value != true )
+    if( Buffer::ext_alloc< foo< 100 > >::value != true )
     {
         return( EXIT_FAILURE );
     }
     std::array< int, 100 > f;
-    if( ext_alloc< decltype( f ) >::value != true )
+    if( Buffer::ext_alloc< decltype( f ) >::value != true )
     {
         return( EXIT_FAILURE );
     }
     UNUSED( f );
     /** false cases **/
-    if( ext_alloc< float >::value != false )
+    if( Buffer::ext_alloc< float >::value != false )
     {
         return( EXIT_FAILURE );
     }
-    if( ext_alloc< int >::value != false )
+    if( Buffer::ext_alloc< int >::value != false )
     {
         return( EXIT_FAILURE );
     }
-    if( ext_alloc< int[16] >::value != false )
+    if( Buffer::ext_alloc< int[16] >::value != false )
     {
         return( EXIT_FAILURE );
     }
@@ -62,7 +62,7 @@ main()
      * this should hit internal ctor alloc and ret
      * false.
      */
-    if( ext_alloc< foo< 15 > >::value != false )
+    if( Buffer::ext_alloc< foo< 15 > >::value != false )
     {
         return( EXIT_FAILURE );
     }

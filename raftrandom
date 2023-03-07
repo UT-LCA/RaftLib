@@ -23,6 +23,6 @@
 
 #include <random>
 
-#include "./raftinc/random.tcc"
+#include "./raftinc/utils/random.tcc"
 
 #endif /* END _RAFTRANDOM_ */

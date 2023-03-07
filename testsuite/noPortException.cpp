@@ -23,57 +23,75 @@ struct big_t
 /**
  * Producer: sends down the stream numbers from 1 to 10
  */
-class A : public raft::kernel
+class A : public raft::Kernel
 {
 private:
     int i   = 0;
 
 public:
-    A() : raft::kernel()
+    A() : raft::Kernel()
     {
-        output.addPort< big_t >("out");
+        add_output< big_t >( "out" );
     }
 
-    virtual raft::kstatus run()
+    virtual bool pop( raft::Task *task, bool dryrun )
+    {
+        return false;
+    }
+
+    virtual bool allocate( raft::Task *task, bool dryrun )
+    {
+        return task->allocate( "out", dryrun );
+    }
+
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut )
     {
         i++;
 
         if ( i <= 10 ) 
         {
-            auto &c( output["out"].allocate< big_t >() );
+            auto &c( bufOut[ "out" ].get< big_t >() );
             c.i = i;
             c.start = reinterpret_cast< std::uintptr_t >( &(c.i) );
-            output["out"].send();
         }
         else
         {   
-            return (raft::stop);
+            return ( raft::kstatus::stop );
         }
 
-        return (raft::proceed);
+        return ( raft::kstatus::proceed );
     };
 };
 
 /**
  * Consumer: takes the number from input and dumps it to the console
  */
-class C : public raft::kernel
+class C : public raft::Kernel
 {
 public:
-    C() : raft::kernel()
+    C() : raft::Kernel()
     {
-        //input.addPort< big_t >("in");
+        //add_input< big_t >( "in" );
     }
 
-    virtual raft::kstatus run()
+    virtual bool pop( raft::Task *task, bool dryrun )
     {
-        auto &a( input[ "in" ].peek< big_t >() );
+        return task->pop( "in", dryrun );
+    }
+
+    virtual bool allocate( raft::Task *task, bool dryrun )
+    {
+        return true;
+    }
+
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut )
+    {
+        auto &a( dataIn[ "in" ].get< big_t >() );
         std::cout << std::dec << a.i << " - " << std::hex << a.start << " - " << std::hex <<  
             reinterpret_cast< std::uintptr_t >( &a.i ) << "\n";
-        input[ "in" ].recycle(1);
-
-        input[ "in" ].recycle(1);
-        return (raft::proceed);
+        return ( raft::kstatus::proceed );
     }
 };
 
@@ -81,17 +99,17 @@ int main()
 {
     A a;
     C c;
-    raft::map m;
+    raft::DAG dag;
     try
     {
-        m += a >> c;
+        dag += a >> c;
     }
-    catch( PortNotFoundException &ex )
+    catch( raft::PortNotFoundException &ex )
     {
         std::cerr << ex.what() << "\n";
         /** success for test case at least **/
         exit( EXIT_SUCCESS );
     }
-    m.exe();
+    dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

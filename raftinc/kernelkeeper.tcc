@@ -1,9 +1,10 @@
 /**
  * kernelkeeper.tcc - contain the locking and unlocking of
  * containers related to raft compute kernels
- * @author: Jonathan Beard
- * @version: Sat Aug 15 09:45:01 2015
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Tue Mar 07 15:22:01 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2015 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,8 +19,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFTKERNELKEEPER_TCC
-#define RAFTKERNELKEEPER_TCC  1
+#ifndef RAFT_KERNELKEEPER_TCC
+#define RAFT_KERNELKEEPER_TCC  1
 #include <unordered_set>
 #include <cstdio>
 #include <cstdlib>
@@ -29,14 +30,18 @@
 #include <cassert>
 #include <cstring>
 #include <mutex>
+
+#include "sysschedutil.hpp"
+
 namespace raft
 {
-    class kernel;
-}
+
+class Kernel;
 
 template< class CONTAINER, class ELEMENTTYPE >
-class keeper
+class Keeper
 {
+
 private:
     std::mutex        mutex;
     CONTAINER         container;
@@ -46,9 +51,19 @@ public:
     using value_type =
         typename std::remove_reference< decltype( container ) >::type;
 
-    keeper() = default;
+    Keeper() = default;
 
-    virtual ~keeper() = default;
+    Keeper( CONTAINER &container )
+    {
+        auto &the_container( acquire() );
+        for( auto &ele : container )
+        {
+            the_container.emplace( ele );
+        }
+        release();
+    }
+
+    virtual ~Keeper() = default;
 
     //FIXME: this will only work for sets, add specializations for others
     //based on insert function
@@ -72,7 +87,7 @@ public:
         while( ! mutex.try_lock() )
         {
            //it's polite to yield
-           std::this_thread::yield();
+           raft::yield();
         }
         return( container );
     }
@@ -91,6 +106,8 @@ public:
 
 };
 
-using kernelkeeper = keeper< std::unordered_set< raft::kernel* >, raft::kernel >;
+using kernelkeeper = Keeper< kernelset_t, Kernel >;
 
-#endif /* END RAFTKERNELKEEPER_TCC */
+} /** end namespace raft **/
+
+#endif /* END RAFT_KERNELKEEPER_TCC */
