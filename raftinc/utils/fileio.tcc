@@ -127,12 +127,15 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut )
+                                            StreamingData &bufOut,
+                                            Task *task )
     {
-        for( auto &[ name, ref ] : bufOut )
+        //for( auto &[ name, ref ] : bufOut )
+        for( auto &name : task->getNamesOut() )
         {
             //auto &chunk( ref.template get< chunktype >() );
-            auto &chunk( bufOut[ name ].template get< chunktype >() );
+            auto &chunk(
+                    bufOut[ name ].template allocate< chunktype >( task ) );
             if( init )
             {
                 fseek( fp, - chunk_offset , SEEK_CUR );
@@ -151,6 +154,7 @@ public:
             chunk.length = num_read;
             static_assert( std::is_signed< decltype( iterations ) >::value,
                            "iterations must be a signed type" );
+            bufOut[ name ].send( task );
             if( --iterations <= 0 )
             {
                 return( kstatus::stop );

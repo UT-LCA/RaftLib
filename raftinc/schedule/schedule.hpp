@@ -50,6 +50,7 @@ public:
 
     virtual void reschedule( Task* task ) = 0;
 
+    virtual void prepare( Task* task ) = 0;
     virtual void postexit( Task* task ) = 0;
 
 }; /** end Schedule decl **/

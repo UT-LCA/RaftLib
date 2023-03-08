@@ -132,9 +132,12 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut )
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        bufOut[ "number_stream" ].get< T >() = static_cast< T >( (this)->count );
+        bufOut[ "number_stream" ].allocate< T >( task ) =
+            static_cast< T >( (this)->count );
+        bufOut[ "number_stream" ].send( task );
         if( count-- > 1 )
         {
             return( raft::kstatus::proceed );
@@ -170,7 +173,8 @@ public:
      }
 
      virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                             raft::StreamingData &bufOut )
+                                             raft::StreamingData &bufOut,
+                                             raft::Task *task )
      {
          char str[ 8 ];
          str[7]='\0';
@@ -178,8 +182,9 @@ public:
          {
              str[ i ] = (char) distrib( gen );
          }
-         bufOut[ "number_stream" ].get< std::string >() =
+         bufOut[ "number_stream" ].allocate< std::string >( task ) =
              static_cast< std::string >( str );
+         bufOut[ "number_stream" ].send( task );
          if( count-- > 1 )
          {
              return( raft::kstatus::proceed );

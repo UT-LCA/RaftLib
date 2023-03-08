@@ -164,6 +164,8 @@ public:
 
     virtual StreamingData &getBufOut( Task *task )
     {
+        //FIXME: what is the logic for oneshot task?
+        //allocate all potential output buffers first
         buf_packed[ task ] = &kernel_pack_output_buf( task->kernel );
         return *buf_packed[ task ];
     }
@@ -410,23 +412,27 @@ protected:
 
     /**
      * task_commit - commit the data involved by the kernel compute().
-     * @param kernel - raft::Kernel*
+     * @param task - raft::Task*
+     * @param buf - raft::StreamingData*
      * @return StreamingData.
      */
     static void task_commit( Task *task, StreamingData *buf )
     {
+        if( PollingWorkerTask == task->type )
+        {
+            delete buf;
+            return;
+        }
+
+        //TODO: what is the logic to cleanup oneshot task buffer and data?
         auto *kernel( task->kernel );
         auto &output_list( kernel->output );
 
         for( auto &[ name, info ] : output_list )
         {
-            if( buf->kernelTouched( name ) )
+            if( buf->has( name ) )
             {
                 get_FIFOFunctor( info )->send( get_FIFO( info ) );
-            }
-            else
-            {
-                get_FIFOFunctor( info )->deallocate( get_FIFO( info ) );
             }
         }
 
@@ -436,6 +442,8 @@ protected:
         {
             get_FIFOFunctor( info )->recycle( get_FIFO( info ) );
         }
+
+        delete buf;
     }
 
     /** both convenience structs, hold exactly what the names say **/

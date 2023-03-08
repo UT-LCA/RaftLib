@@ -1,11 +1,11 @@
 /**
- * read_each.tcc - 
+ * read_each.tcc -
  * @author: Jonathan Beard, Qinzhe Wu
  * @version: Tue Mar 07 12:12:46 2023
- * 
+ *
  * Copyright 2023 The Regents of the University of Texas
  * Copyright 2014 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -30,7 +30,7 @@
 namespace raft{
 
 
-template < class T, 
+template < class T,
            class Iterator > class readeach : public parallel_k
 {
 public:
@@ -42,14 +42,14 @@ public:
         inc_output< T >();
     }
 
-    
+
     readeach( const readeach &other ) : parallel_k(),
                                         begin( std::move( other.begin ) ),
                                         end  ( std::move( other.end ) )
     {
         inc_output< T >();
     }
-    
+
     virtual ~readeach() = default;
 
 
@@ -64,9 +64,11 @@ public:
     }
 
     virtual kstatus::value_t compute( StreamingData &dataIn,
-                                      StreamingData &bufOut )
+                                      StreamingData &bufOut,
+                                      Task *task )
     {
-        bufOut[ "0" ].get< T >() = *begin;
+        bufOut[ "0" ].allocate< T >( task ) = *begin;
+        bufOut[ "0" ].send( task );
         ++begin;
         return ( end == begin ) ? kstatus::stop : kstatus::proceed;
     }
@@ -76,11 +78,11 @@ private:
     const Iterator end;
 }; /** end template readeach **/
 
-template < class T, 
-           class Iterator > 
+template < class T,
+           class Iterator >
 static
 raft::readeach< T, Iterator >
-read_each( Iterator &&begin, 
+read_each( Iterator &&begin,
            Iterator &&end )
 {
     return( readeach< T, Iterator >( begin,

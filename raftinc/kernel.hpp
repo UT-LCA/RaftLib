@@ -80,7 +80,8 @@ public:
      * actual computation.
      */
     virtual kstatus::value_t compute( StreamingData &data_in,
-                                      StreamingData &data_out ) = 0;
+                                      StreamingData &data_out,
+                                      Task *task ) = 0;
 
     /**
      * pop - function that programers should extended for

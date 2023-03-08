@@ -31,11 +31,15 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut )
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        A &a( dataIn[ "input_a" ].get< A >() );
-        B &b( dataIn[ "input_b" ].get< B >() );
-        bufOut[ "sum" ].get< C >() = C( static_cast< C >( a + b ) );
+        A a;
+        B b;
+        dataIn[ "input_a" ].pop< A >( a, task );
+        dataIn[ "input_b" ].pop< B >( b, task );
+        C c( static_cast< C >( a + b ) );
+        bufOut[ "sum" ].push< C >( c, task );
         //if( sig_b == raft::eof )
         //{
         //   return( raft::stop );

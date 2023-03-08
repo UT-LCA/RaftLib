@@ -68,9 +68,10 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut )
+                                            StreamingData &bufOut,
+                                            Task *task )
     {
-        auto &chunk( dataIn[ "0" ].get< T >() );
+        auto &chunk( dataIn[ "0" ].peek< T >( task ) );
         auto it( chunk.begin() );
         do
         {
@@ -80,8 +81,7 @@ public:
             {
                 const std::size_t loc( it.location() + chunk.start_position );
                 const std::size_t end( loc + term_length );
-                //FIXME: deal with multiple hits in a chunck, avoid overwrite
-                bufOut[ "1" ].get< match_t >() = std::make_pair( loc, end );
+                bufOut[ "1" ].push< match_t >( std::make_pair( loc, end ), task );
                 it += 1;
             }
             else
@@ -90,6 +90,7 @@ public:
             }
         }
         while( true );
+        dataIn[ "0" ].recycle( task );
         return( raft::kstatus::proceed );
     }
 private:

@@ -24,6 +24,7 @@
 #include <string>
 #include <sstream>
 #include "exceptions.hpp"
+#include "task.hpp"
 #include "defs.hpp"
 
 namespace raft {
@@ -40,9 +41,10 @@ public:
         return *ptr;
     }
     template< class T >
-    void set( T &data_ref )
+    DataRef &set( T &data_ref )
     {
         ref = reinterpret_cast< void * >( &data_ref );
+        return *this;
     }
 private:
     void *ref = nullptr;
@@ -53,18 +55,7 @@ class StreamingData
 {
 public:
     StreamingData() = default;
-    DataRef &operator[]( const port_name_t &name )
-    {
-        auto iter( store.find( name ) );
-        if( store.end() == iter )
-        {
-            std::stringstream ss;
-            ss << "Data not found for " << name << std::endl;
-            throw DataNotFoundException( ss.str() );
-        }
-        touched.insert( name );
-        return iter->second;
-    }
+
     template< class T >
     void set( const port_name_t &name, T &data_ref )
     {
@@ -88,6 +79,106 @@ public:
         return store[ name ];
     }
 
+    StreamingData &operator[]( const port_name_t &name )
+    {
+        touched.emplace_back( name );
+        return *this;
+    }
+
+    StreamingData &at( const port_name_t &name )
+    {
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            std::stringstream ss;
+            ss << "Data not found for " << name << std::endl;
+            throw DataNotFoundException( ss.str() );
+        }
+        return this->operator[]( name );
+    }
+
+    template< class T >
+    void pop( T &item, Task *task )
+    {
+        auto &name( touched.back() );
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            DataRef ref;
+            ref.set< T >( item );
+            task->pop( name, ref );
+            return;
+        }
+        //TODO: it assumes assign operator is defined for T
+        item = iter->second.get< T >();
+    }
+
+    template< class T >
+    T &peek( Task *task )
+    {
+        auto &name( touched.back() );
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            return task->peek( name ).get< T >();
+        }
+        return iter->second.get< T >();
+    }
+
+    void recycle( Task *task )
+    {
+        task->recycle( touched.back() );
+    }
+
+    template< class T >
+    void push( T &&item, Task *task )
+    {
+        auto &name( touched.back() );
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            DataRef ref;
+            ref.set< T >( item );
+            task->push( name, ref );
+            return;
+        }
+        //TODO: it assumes assign operator is defined for T
+        iter->second.get< T >() = item;
+    }
+
+    template< class T >
+    void push( T &item, Task *task )
+    {
+        auto &name( touched.back() );
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            DataRef ref;
+            ref.set< T >( item );
+            task->push( name, ref );
+            return;
+        }
+        //TODO: it assumes assign operator is defined for T
+        iter->second.get< T >() = item;
+    }
+
+    template< class T >
+    T &allocate( Task *task )
+    {
+        auto &name( touched.back() );
+        auto iter( store.find( name ) );
+        if( store.end() == iter )
+        {
+            return task->allocate( name ).get< T >();
+        }
+        return iter->second.get< T >();
+    }
+
+    void send( Task *task )
+    {
+        task->send( touched.back() );
+    }
+
     std::unordered_map< port_name_t, DataRef >::iterator begin()
     {
         return store.begin();
@@ -98,20 +189,14 @@ public:
         return store.end();
     }
 
-    bool kernelTouched( const port_name_t &name )
+    bool has( const port_name_t &name ) const
     {
-        return touched.end() != touched.find( name );
-    }
-
-    void clearTouchedMarks()
-    {
-        touched.clear();
+        return store.end() != store.find( name );
     }
 
 private:
     std::unordered_map< port_name_t, DataRef > store;
-    std::unordered_set< port_name_t > touched;
-    bool satisfied = false; /* whether enough to run the kernel compute() */
+    std::vector< port_name_t > touched;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

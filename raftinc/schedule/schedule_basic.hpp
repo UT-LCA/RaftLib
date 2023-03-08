@@ -179,6 +179,17 @@ public:
         raft::yield();
     }
 
+    virtual void prepare( Task* task )
+    {
+        while( ! task->alloc->isReady() )
+        {
+            raft::yield();
+        }
+        // this scheduler assume 1 pollingworker per kernel
+        // so we just take the per-port FIFO as the task FIFO
+        copy_port_fifos( task );
+    }
+
     virtual void postexit( Task* task )
     {
         while( ! tasks_mutex.try_lock() )
@@ -225,6 +236,26 @@ protected:
     static inline FIFO* get_FIFO( PortInfo &pi )
     {
         return pi.runtime_info.fifo;
+    }
+
+    static inline void copy_port_fifos( Task *task )
+    {
+        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+        auto *kernel( worker->kernel );
+        auto &input_ports( kernel->input );
+        for( auto &[ name, info ] : input_ports )
+        {
+            worker->fifos_in.insert(
+                    std::make_pair( name, get_FIFO( info ) ) );
+            worker->names_in.push_back( name );
+        }
+        auto &output_ports( kernel->output );
+        for( auto &[ name, info ] : output_ports )
+        {
+            worker->fifos_out.insert(
+                    std::make_pair( name, get_FIFO( info ) ) );
+            worker->names_out.push_back( name );
+        }
     }
 
 

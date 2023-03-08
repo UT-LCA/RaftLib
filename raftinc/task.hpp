@@ -1,5 +1,5 @@
 /**
- * task.hpp -
+ * task.hpp - the interface class of Task
  * @author: Qinzhe Wu
  * @version: Sun Feb 26 15:30:00 2023
  *
@@ -19,20 +19,19 @@
  */
 #ifndef RAFT_TASK_HPP
 #define RAFT_TASK_HPP  1
+#include <vector>
 
 #include "exceptions.hpp"
 #include "defs.hpp"
 #include "rafttypes.hpp"
-#include "streamingdata.hpp"
-#include "allocate/allocate.hpp"
-#include "schedule/schedule.hpp"
 
 namespace raft
 {
 
-class Kernel;
-//class Allocate;
-//class Schedule;
+class DataRef;
+class StreamingData;
+class Allocate;
+class Schedule;
 
 enum TaskType
 {
@@ -50,39 +49,29 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
 
     virtual kstatus::value_t exe() = 0;
 
-    bool pop( const port_name_t &portname, bool dryrun )
-    {
-        if( dryrun )
-        {
-            return alloc->getDataIn( this, portname );
-        }
-        else
-        {
-            return alloc->dataInReady( this, portname );
-        }
-    }
+    virtual void pop( const port_name_t &name, DataRef &item ) = 0;
 
-    bool allocate( const port_name_t &portname, bool dryrun )
-    {
-        if( dryrun )
-        {
-            return alloc->getBufOut( this, portname );
-        }
-        else
-        {
-            return alloc->bufOutReady( this, portname );
-        }
-    }
+    virtual DataRef peek( const port_name_t &name ) = 0;
 
-    StreamingData &getDataIn()
-    {
-        return alloc->getDataIn( this );
-    }
+    virtual void recycle( const port_name_t &name ) = 0;
 
-    StreamingData &getBufOut()
-    {
-        return alloc->getBufOut( this );
-    }
+    virtual void push( const port_name_t &name, DataRef &item ) = 0;
+
+    virtual DataRef allocate( const port_name_t &name ) = 0;
+
+    virtual void send( const port_name_t &name ) = 0;
+
+    virtual bool pop( const port_name_t &portname, bool dryrun ) = 0;
+
+    virtual bool allocate( const port_name_t &portname, bool dryrun ) = 0;
+
+    virtual std::vector< port_name_t > &getNamesIn() = 0;
+
+    virtual std::vector< port_name_t > &getNamesOut() = 0;
+
+    virtual StreamingData &getDataIn() = 0;
+
+    virtual StreamingData &getBufOut() = 0;
 };
 
 } /** end namespace raft */

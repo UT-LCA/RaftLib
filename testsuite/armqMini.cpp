@@ -37,11 +37,11 @@ public:
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &dataOut )
+                                            raft::StreamingData &dataOut,
+                                            raft::Task *task )
     {
-        auto &mem( dataOut[ "y" ].get< obj_t >() );
-        mem = counter++;
-        if( counter == 200 )
+        dataOut[ "y" ].push< obj_t >( counter, task );
+        if( ++counter == 200 )
         {
             return( raft::kstatus::stop );
         }
@@ -74,9 +74,11 @@ public:
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &dataOut )
+                                            raft::StreamingData &dataOut,
+                                            raft::Task *task )
     {
-        auto &in( dataIn[ "x" ].get< obj_t >() );
+        obj_t in;
+        dataIn[ "x" ].pop< obj_t >( in, task );
         std::cout << in << std::endl;
         if( in != counter++ )
         {
