@@ -18,36 +18,38 @@ if( STRING_NAMES )
          noPortException
          portTypeException
          disconnectedGraph
+         twiceAdd
          bracketsTest
          #partitionTest
          fixedMatchTest
          stdlibsupport
          armqMini
-         #lambdatest
          #peek
-         #allocate
+         #peekrange
+         allocate
          #allocate_s
+         allocateSendPush
+         allocateSendRandomPush
+         allocatePopPush
+         allocatePopInternal
+         allocatePopInternalObject
+         allocatePopExternal
+         lambdatest
          #foreach
          #dynallocate
          #split
          #join
-         #peekrange
          #parallel
-         #uniform
-         #chain
+         uniform
+         chain
+         #parallelchain
          #splitchain
+         chainMultiplePorts
          #staticLongSplitChain
          #staticSplitJoin
          #staticSplitChainJoin
          #staticJoin
          #staticContJoin
-         #allocateSendPush
-         #allocateSendRandomPush
-         #allocatePopPush
-         #allocatePopInternal
-         #allocatePopInternalObject
-         #allocatePopExternal
-         #parallelchain
          #multiPrint
          #poolThreadRaftManip
          #select_in_t
@@ -57,15 +59,13 @@ if( STRING_NAMES )
          #staticLongSplitChainRetStruct
          #staticSplitChainJoinRetStruct
          #staticSplitJoinRetStruct
-         #chainMultiplePorts
          ###fixedAllocate
-         #twiceAdd
          #allocate_s_string
          #allpush
          #nonTrivialAllocatorPop
          #nonTrivialAllocatorPopExternal
-         #vectorAlloc
-         #stringAlloc
+         vectorAlloc
+         stringAlloc
          #reduction
          )
 else()

@@ -11,44 +11,16 @@
 #include <raft>
 #include <raftio>
 #include "generate.tcc"
+#include "pipeline.tcc"
 
 
-template< typename A, typename B, typename C > class Sum : public raft::Kernel
+template< class A, class B, class C >
+class Sum : public raft::test::sum< A, B, C >
 {
 public:
-    Sum() : raft::Kernel()
+    Sum() : raft::test::sum< A, B, C >()
     {
-        add_input< A >( "input_a", "input_b", "fail" );
-        add_output< C  >( "sum" );
-    }
-
-
-    virtual bool pop( raft::Task *task, bool dryrun )
-    {
-        return task->pop( "input_a", dryrun ) &&
-               task->pop( "input_b", dryrun );
-    }
-
-    virtual bool allocate( raft::Task *task, bool dryrun )
-    {
-        return task->allocate( "sum", dryrun );
-    }
-
-    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
-    {
-        A a;
-        B b;
-        dataIn[ "input_a" ].pop< A >( a, task );
-        dataIn[ "input_b" ].pop< B >( b, task );
-        C c( static_cast< C >( a + b ) );
-        bufOut[ "sum" ].push< C >( c, task );
-        //if( sig_b == raft::eof )
-        //{
-        //   return( raft::stop );
-        //}
-        return( raft::kstatus::proceed );
+        (this)->template add_input< A >( "fail" );
     }
 
 };

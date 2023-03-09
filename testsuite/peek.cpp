@@ -7,22 +7,21 @@
 #include <raftio>
 #include <raftmath>
 #include "generate.tcc"
+#include "pipeline.tcc"
 
 
-
-template < typename T > class Sum : public raft::kernel
+template < typename T > class Sum : public raft::test::sum< T, T, T >
 {
 public:
-   Sum() : raft::kernel()
+   Sum() : raft::test::sum< T, T, T >()
    {
-      input.addPort<  T > ( "input_a" );
-      input.addPort<  T > ( "input_b" );
-      output.addPort< T  >( "sum"     );
    }
-   
-   virtual raft::kstatus run()
+
+   virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                           raft::StreamingData &bufOut,
+                                           raft::Task *task )
    {
-      output[ "sum" ].push( raft::sum< T >( input[ "input_a" ], 
+      bufOut[ "sum" ].push( raft::sum< T >( input[ "input_a" ],
                                             input[ "input_b" ] ) );
       return( raft::proceed );
    }
@@ -46,10 +45,10 @@ main( int argc, char **argv )
    gen a( count ), b( count );
    sum s;
    print p;
-   raft::map m;
-   m += a >> s[ "input_a" ];
-   m += b >> s[ "input_b" ];
-   m += s >> p;
-   m.exe();
+   raft::DAG dag;
+   dag += a >> s[ "input_a" ];
+   dag += b >> s[ "input_b" ];
+   dag += s >> p;
+   dag.exe< raft::RuntimeFIFO >();
    return( EXIT_SUCCESS );
 }

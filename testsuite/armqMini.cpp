@@ -24,23 +24,24 @@
 #include <cstdlib>
 #include <cassert>
 
+#include "pipeline.tcc"
+
 using obj_t = std::int32_t;
 
-class start : public raft::Kernel
+class start : public raft::test::start< obj_t >
 {
 public:
-    start() : raft::Kernel()
+    start() : raft::test::start< obj_t >()
     {
-        add_output< obj_t >( "y" );
     }
 
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &dataOut,
+                                            raft::StreamingData &bufOut,
                                             raft::Task *task )
     {
-        dataOut[ "y" ].push< obj_t >( counter, task );
+        bufOut[ "y" ].push< obj_t >( counter, task );
         if( ++counter == 200 )
         {
             return( raft::kstatus::stop );
@@ -48,33 +49,22 @@ public:
         return( raft::kstatus::proceed );
     }
 
-    bool pop( raft::Task *task, bool dryrun )
-    {
-        return true;
-    }
-
-    bool allocate( raft::Task *task, bool dryrun )
-    {
-        return task->allocate( "y", dryrun );
-    }
-
 private:
     obj_t counter = 0;
 };
 
 
-class last : public raft::Kernel
+class last : public raft::test::last< obj_t >
 {
 public:
-    last() : raft::Kernel()
+    last() : raft::test::last< obj_t >()
     {
-        add_input< obj_t >( "x" );
     }
 
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &dataOut,
+                                            raft::StreamingData &bufOut,
                                             raft::Task *task )
     {
         obj_t in;
@@ -86,16 +76,6 @@ public:
             exit( EXIT_FAILURE );
         }
         return( raft::kstatus::proceed );
-    }
-
-    bool pop( raft::Task *task, bool dryrun )
-    {
-        return task->pop( "x", dryrun );
-    }
-
-    bool allocate( raft::Task *task, bool dryrun )
-    {
-        return true;
     }
 
 private:

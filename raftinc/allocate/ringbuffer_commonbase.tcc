@@ -310,22 +310,26 @@ protected:
                               iterator_type end,
                               const signal::value_t &signal )
     {
-       auto dist( std::distance( begin, end ) );
-       const signal::value_t dummy( signal::none );
-       while( dist-- )
-       {
-          /** use global push function **/
-          if( dist == 0 )
-          {
-             (this)->local_push( (void*)&(*begin), signal );
-          }
-          else
-          {
-             (this)->local_push( (void*)&(*begin), dummy );
-          }
-          ++begin;
-       }
-       return;
+        auto dist( std::distance( begin, end ) );
+        const signal::value_t dummy( signal::none );
+        while( dist-- )
+        {
+            /** use global push function **/
+            if( dist == 0 )
+            {
+                /** NOTE: due to the space-efficient specialization of
+                 * vector<bool>, *begin could be a temporary bool value
+                 * and we cannot get the address for it
+                 */
+                (this)->local_push( (void*)&(*begin), signal );
+            }
+            else
+            {
+                (this)->local_push( (void*)&(*begin), dummy );
+            }
+            ++begin;
+        }
+        return;
     }
 
 
@@ -366,19 +370,22 @@ protected:
                               list_iter_t *end(
                                       reinterpret_cast< list_iter_t* >(
                                           e_ptr ) );
-                              (this)->local_insert_helper( *begin, *end, sig );
-                          } },
-                        { typeid( vec_iter_t ).hash_code(),
-                          [&]( void *b_ptr, void *e_ptr,
-                               const signal::value_t  &sig )
-                          {
-                              vec_iter_t *begin(
-                                      reinterpret_cast< vec_iter_t* >(
-                                          b_ptr ) );
-                              vec_iter_t *end(
-                                      reinterpret_cast< vec_iter_t* >(
-                                          e_ptr ) );
-                              (this)->local_insert_helper( *begin, *end, sig );
+                              (this)->local_insert_helper< list_iter_t >(
+                                      *begin, *end, sig );
+                        //TODO: find a nice way to deal with vector<bool>
+                        //  } },
+                        //{ typeid( vec_iter_t ).hash_code(),
+                        //  [&]( void *b_ptr, void *e_ptr,
+                        //       const signal::value_t &sig )
+                        //  {
+                        //      vec_iter_t *begin(
+                        //              reinterpret_cast< vec_iter_t* >(
+                        //                  b_ptr ) );
+                        //      vec_iter_t *end(
+                        //              reinterpret_cast< vec_iter_t* >(
+                        //                  e_ptr ) );
+                        //      (this)->local_insert_helper< vec_iter_t >(
+                        //              *begin, *end, sig );
                           } } };
         auto f( func_map.find( iterator_type ) );
         if( f != func_map.end() )

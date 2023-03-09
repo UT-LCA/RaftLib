@@ -1,10 +1,11 @@
 /**
- * random.cpp - 
- * @author: Jonathan Beard
- * @version: Mon Mar  2 14:00:14 2015
- * 
+ * random.cpp -
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar  8 23:44:14 2023
+ *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2015 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -28,40 +29,52 @@
  int
  main()
  {
-   using namespace raft;
-   using type_t = std::uint32_t;
-   const static auto send_size( 10 );
-   using gen = random_variate< std::default_random_engine,
-                               std::uniform_int_distribution,
-                               type_t >;
-   using p_out = raft::print< type_t, '\n' >;
-   using add = raft::lambdak< type_t >;
-   
-   std::vector< type_t > output;
-   
-   const static auto min( 0 );
-   const static auto max( 100 );
-   gen g0( send_size, min, max ), 
-       g1( send_size, min, max );
-   
-   p_out print;
+     using namespace raft;
+     using type_t = std::uint32_t;
+     const static auto send_size( 10 );
+     using gen = random_variate< std::default_random_engine,
+                                 std::uniform_int_distribution,
+                                 type_t >;
+     using p_out = raft::print< type_t, '\n' >;
+     using add = raft::lambdak< type_t >;
 
-   auto  l_add( []( Port &input,
-                    Port &output )
-      {
+     std::vector< type_t > output;
+
+     const static auto min( 0 );
+     const static auto max( 100 );
+     gen g0( send_size, min, max ),
+         g1( send_size, min, max );
+
+     p_out print;
+
+     auto  l_add( []( raft::StreamingData &dataIn,
+                      raft::StreamingData &bufOut,
+                      raft::Task *task )
+     {
          std::uint32_t a,b;
-         input[ "0" ].pop( a );
-         input[ "1" ].pop( b );
-         output[ "0" ].push( a + b );
-         return( raft::proceed );
-      } );
+         dataIn[ "0" ].pop( a, task );
+         dataIn[ "1" ].pop( b, task );
+         bufOut[ "0" ].push( a + b, task );
+         return( raft::kstatus::proceed );
+     } );
 
-   add add_kernel( 2, 1, l_add );
+     auto l_pop( []( raft::Task *task, bool dryrun )
+     {
+         return task->pop( "0", dryrun ) &&
+                task->pop( "1", dryrun );
+     } );
 
-   raft::map m;
-   m += g0 >> add_kernel[ "0" ][ "0" ] >> print;
-   m += g1 >> add_kernel[ "1" ];
-   m.exe();
+     auto l_alloc( []( raft::Task *task, bool dryrun )
+     {
+         return task->allocate( "0", dryrun );
+     } );
 
-   return( EXIT_SUCCESS );
+     add add_kernel( 2, 1, l_add, l_pop, l_alloc );
+
+     raft::DAG dag;
+     dag += g0 >> add_kernel[ "0" ][ "0" ] >> print;
+     dag += g1 >> add_kernel[ "1" ];
+     dag.exe< raft::RuntimeFIFO >();
+
+     return( EXIT_SUCCESS );
  }

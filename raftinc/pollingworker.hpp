@@ -58,8 +58,8 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
                             //(this)->alloc->getBufOut( this ),
                             this ) );
                 (this)->sched->postcompute( this, sig_status );
-                (this)->sched->reschedule( this );
             }
+            (this)->sched->reschedule( this );
         }
         (this)->sched->postexit( this );
 

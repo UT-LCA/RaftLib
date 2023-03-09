@@ -1,10 +1,10 @@
 /**
- * random.tcc - 
+ * random.tcc -
  * @author: Jonathan Beard
  * @version: Mon Jan  4 15:17:03 2016
- * 
+ *
  * Copyright 2016 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -33,11 +33,11 @@ template < class GENERATOR,
 class random_variate : public parallel_k
 {
 public:
-    template <class ... Args > 
-    random_variate( const std::size_t N, 
+    template <class ... Args >
+    random_variate( const std::size_t N,
                     Args&&... params ) : parallel_k(),
-        gen( 
-         static_cast< typename GENERATOR::result_type >( 
+        gen(
+         static_cast< typename GENERATOR::result_type >(
             std::chrono::system_clock::now().time_since_epoch().count() ) ),
                                          dist( std::forward< Args >( params )... ),
                                          N( N )
@@ -46,14 +46,14 @@ public:
         for( auto i( 0 ); i < STATICPORT; i++ )
         {
 #endif
-        addPortTo< TYPE >( output );
+        inc_output< TYPE >();
 #ifdef STATICPORT
         }
 #endif
     }
 
     random_variate( const random_variate &other ) : parallel_k(),
-       gen( static_cast< typename GENERATOR::result_type >( 
+       gen( static_cast< typename GENERATOR::result_type >(
             std::chrono::system_clock::now().time_since_epoch().count() ) ),
                                                     dist( other.dist ),
                                                     N( other.N )
@@ -62,7 +62,7 @@ public:
         for( auto i( 0 ); i < STATICPORT; i++ )
         {
 #endif
-        addPortTo< TYPE >( output );
+        inc_output< TYPE >();
 #ifdef STATICPORT
         }
 #endif
@@ -71,19 +71,31 @@ public:
     virtual ~random_variate() = default;
 
     /** enable cloning **/
-    CLONE();
+    //CLONE();
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( StreamingData &dataIn,
+                                            StreamingData &bufOut,
+                                            Task *task )
     {
-        for( auto &p : output )
+        for( auto &name : task->getNamesOut() )
         {
-            p.push( dist( gen ) );
+            bufOut[ name ].push( dist( gen ), task );
             if( ++count_of_sent >= N )
             {
-                return( raft::stop );
+                return( raft::kstatus::stop );
             }
         }
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
+    }
+
+    virtual bool pop( Task *task, bool dryrun )
+    {
+        return true;
+    }
+
+    virtual bool allocate( Task *task, bool dryrun )
+    {
+        return true;
     }
 
 private:

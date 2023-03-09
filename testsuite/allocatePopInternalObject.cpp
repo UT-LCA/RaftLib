@@ -1,10 +1,11 @@
 /**
- * allocateSendPush.cpp - throw an error if internal object
+ * allocatePopInternalObject.cpp - throw an error if internal object
  * pop fails.
  *
- * @author: Jonathan Beard
- * @version: Sat Feb 27 19:10:26 2016
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar 08 10:34:26 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2016 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,34 +27,36 @@
 #include <cstdlib>
 #include <cassert>
 #include "foodef.tcc"
+#include "pipeline.tcc"
 
 
 using obj_t = foo< 63 >;
 
-class start : public raft::kernel
+class start : public raft::test::start< obj_t >
 {
 public:
-    start() : raft::kernel()
+    start() : raft::test::start< obj_t >()
     {
-        output.addPort< obj_t >( "y" );
     }
 
     virtual ~start() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        auto &mem( output[ "y" ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-        output[ "y" ].send();
         counter++;
+        bufOut[ "y" ].send( task );
         if( counter == 200 )
         {
-            return( raft::stop );
+            return( raft::kstatus::stop );
         }
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -63,20 +66,21 @@ private:
 
 
 
-class last : public raft::kernel
+class last : public raft::test::last< obj_t >
 {
 public:
-    last() : raft::kernel()
+    last() : raft::test::last< obj_t >()
     {
-        input.addPort< obj_t >( "x" );
     }
 
     virtual ~last() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
         obj_t mem;
-        input[ "x" ].pop( mem );
+        dataIn[ "x" ].pop( mem, task );
 
         using index_type = std::remove_const_t<decltype(mem.length)>;
         for( index_type i( 0 ); i < mem.length; i++ )
@@ -89,7 +93,7 @@ public:
             }
         }
         counter++;
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -102,8 +106,8 @@ main()
     start s;
     last l;
 
-    raft::map M;
-    M += s >> l;
-    M.exe();
+    raft::DAG dag;
+    dag += s >> l;
+    dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

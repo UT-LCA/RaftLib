@@ -1,10 +1,11 @@
 /**
- * random.cpp - 
- * @author: Jonathan Beard
- * @version: Mon Mar  2 14:00:14 2015
- * 
+ * random.cpp -
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar  8 23:45:14 2023
+ *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2015 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -39,9 +40,9 @@ main()
   const static auto min( 1 );
   const static auto max( 100 );
   gen g( send_size, min, max );
-  raft::map m;
-  m += g >> we;
-  m.exe();
+  raft::DAG dag;
+  dag += g >> we;
+  dag.exe< raft::RuntimeFIFO >();
 
   if( output.size() == send_size )
   {

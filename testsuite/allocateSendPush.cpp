@@ -1,8 +1,9 @@
 /**
  * allocateSendPush.cpp -
- * @author: Jonathan Beard
- * @version: Sat Feb 27 19:10:26 2016
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar 08 16:19:26 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2016 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,33 +25,35 @@
 #include <cstdlib>
 #include <cassert>
 #include "foodef.tcc"
+#include "pipeline.tcc"
 
 using obj_t = foo< 100 >;
 
-class start : public raft::kernel
+class start : public raft::test::start< obj_t >
 {
 public:
-    start() : raft::kernel()
+    start() : raft::test::start< obj_t >()
     {
-        output.addPort< obj_t >( "y" );
     }
 
     virtual ~start() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        auto &mem( output[ "y" ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-        output[ "y" ].send();
+        bufOut[ "y" ].send( task );
         counter++;
         if( counter == 200 )
         {
-            return( raft::stop );
+            return( raft::kstatus::stop );
         }
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -58,54 +61,53 @@ private:
 };
 
 
-class middle : public raft::kernel
+class middle : public raft::test::middle< obj_t, obj_t >
 {
 public:
-    middle() : raft::kernel()
+    middle() : raft::test::middle< obj_t, obj_t >()
     {
-        input.addPort< obj_t >( "x" );
-        output.addPort< obj_t >( "y" );
     }
 
     virtual ~middle() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        auto &mem( input[ "x" ].peek< obj_t >() );
-        output[ "y" ].push( mem );
-        input[ "x" ].unpeek();
-        input[ "x" ].recycle();
-        return( raft::proceed );
+        auto &mem( dataIn[ "x" ].peek< obj_t >( task ) );
+        bufOut[ "y" ].push( mem, task );
+        dataIn[ "x" ].recycle( task );
+        return( raft::kstatus::proceed );
     }
 };
 
 
-class last : public raft::kernel
+class last : public raft::test::last< obj_t >
 {
 public:
-    last() : raft::kernel()
+    last() : raft::test::last< obj_t >()
     {
-        input.addPort< obj_t >( "x" );
     }
 
     virtual ~last() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
-        auto &mem( input[ "x" ].peek< obj_t >() );
+        auto &mem( dataIn[ "x" ].peek< obj_t >( task ) );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             //will fail if we've messed something up
-            if( static_cast<std::size_t>(mem.pad[ i ]) != counter )
+            if( static_cast<std::size_t>( mem.pad[ i ]) != counter )
             {
                 std::cerr << "test failed\n";
                 exit( EXIT_FAILURE );
             }
         }
-        input[ "x" ].unpeek();
-        input[ "x" ].recycle();
+        dataIn[ "x" ].recycle( task );
         counter++;
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -119,8 +121,8 @@ main()
     middle m;
     last l;
 
-    raft::map M;
-    M += s >> m >> l;
-    M.exe();
+    raft::DAG dag;
+    dag += s >> m >> l;
+    dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

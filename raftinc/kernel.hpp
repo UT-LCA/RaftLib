@@ -111,6 +111,28 @@ public:
     }
 
     /**
+     * addInput - wrap protected add_input method to expose it for the
+     * helper classes used by lambdak, otherwise the kernel itself should
+     * use add_input() instead
+     */
+    template< class T >
+    void addInput( const port_name_t &name )
+    {
+        add_input< T >( name );
+    }
+
+    /**
+     * addOutput - wrap protected add_output method to expose it for the
+     * helper classes used by lambdak, otherwise the kernel itself should
+     * use add_output() instead
+     */
+    template< class T >
+    void addOutput( const port_name_t &name )
+    {
+        add_output< T >( name );
+    }
+
+    /**
      * packOutputBuf - function that allocate and packages the output
      * buffer.
      */

@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <raft>
 #include <raftio>
 
@@ -13,31 +14,32 @@ main()
     using type_t = std::int32_t;
     using print  = raft::print< type_t, '\n' >;
     using rnd    = raft::lambdak< type_t >;
-    rnd lk( /** input ports     **/ 0, 
-            /** output ports    **/ 1, 
-            /** the kernel func **/
-        [&]( Port &input,
-             Port &output )
+    rnd lk( /** input ports      **/ 0,
+            /** output ports     **/ 1,
+            /** the compute func **/
+        [&]( raft::StreamingData &dataIn,
+             raft::StreamingData &bufOut,
+             raft::Task *task )
         {
-            UNUSED( input );
+            UNUSED( dataIn );
             static std::default_random_engine generator;
             static std::uniform_int_distribution< type_t > distribution(1,10);
-            static auto rand_func = std::bind( distribution,  generator ); 
+            static auto rand_func = std::bind( distribution, generator );
             static std::size_t gen_count( 0 );
             if( gen_count++ < 10000 )
             {
-               output[ "0" ].push( 
+               bufOut[ "0" ].push(
                   rand_func(),
-                  raft::none );
-               return( raft::proceed );
+                  task );
+               return( raft::kstatus::proceed );
             }
-            return( raft::stop );
+            return( raft::kstatus::stop );
         } );
 
     print p;
-    raft::map m;
+    raft::DAG dag;
 
-    m += lk >> p;
-    m.exe();
+    dag += lk >> p;
+    dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

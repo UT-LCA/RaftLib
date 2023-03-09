@@ -2,9 +2,10 @@
  * allocateSendPush.cpp - throw an error if internal object
  * pop fails.
  *
- * @author: Jonathan Beard
- * @version: Sat Feb 27 19:10:26 2016
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar 08 10:34:26 2023
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2016 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +27,7 @@
 #include <cstdlib>
 #include <cassert>
 #include "foodef.tcc"
+#include "pipeline.tcc"
 
 static std::vector< std::uintptr_t > A;
 static std::vector< std::uintptr_t > B;
@@ -33,26 +35,23 @@ static std::vector< std::uintptr_t > C;
 
 using obj_t = foo< 80 >;
 
-class start : public raft::kernel
+class start : public raft::test::start< obj_t >
 {
 public:
-    start() : raft::kernel()
+    start() : raft::test::start< obj_t >()
     {
-#ifdef STRING_NAMES        
-        output.addPort< obj_t >( "y" );
-#else
-        output.addPort< obj_t >( "y"_port );
-#endif
     }
 
     virtual ~start() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
 #ifdef STRING_NAMES    
-        auto &mem( output[ "y" ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
 #else
-        auto &mem( output[ "y"_port ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y"_port ].allocate< obj_t >( task ) );
 #endif
         A.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         for( auto i( 0 ); i < mem.length; i++ )
@@ -60,16 +59,16 @@ public:
             mem.pad[ i ] = static_cast< int >( counter );
         }
 #ifdef STRING_NAMES        
-        output[ "y" ].send();
+        bufOut[ "y" ].send( task );
 #else
-        output[ "y"_port ].send();
+        bufOut[ "y"_port ].send( task );
 #endif
         counter++;
         if( counter == 200 )
         {
-            return( raft::stop );
+            return( raft::kstatus::stop );
         }
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -77,61 +76,51 @@ private:
 };
 
 
-class middle : public raft::kernel
+class middle : public raft::test::middle< obj_t, obj_t >
 {
 public:
-    middle() : raft::kernel()
+    middle() : raft::test::middle< obj_t, obj_t >()
     {
-#ifdef STRING_NAMES
-        input.addPort< obj_t >( "x" );
-        output.addPort< obj_t >( "y" );
-#else
-        input.addPort< obj_t >( "x"_port );
-        output.addPort< obj_t >( "y"_port );
-#endif
     }
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
 #ifdef STRING_NAMES    
-        auto &val( input[ "x" ].peek< obj_t >() );
+        auto &val( dataIn[ "x" ].peek< obj_t >( task ) );
         B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
-        output[ "y" ].push( val );
-        input[ "x" ].unpeek();
-        input[ "x" ].recycle( 1 );
+        bufOut[ "y" ].push( val, task );
+        dataIn[ "x" ].recycle( task );
 #else
-        auto &val( input[ "x"_port ].peek< obj_t >() );
+        auto &val( dataIn[ "x"_port ].peek< obj_t >( task ) );
         B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
-        output[ "y"_port ].push( val );
-        input[ "x"_port ].unpeek();
-        input[ "x"_port ].recycle( 1 );
+        bufOut[ "y"_port ].push( val, task );
+        dataIn[ "x"_port ].recycle( task );
 #endif
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 };
 
 
-class last : public raft::kernel
+class last : public raft::test::last< obj_t >
 {
 public:
-    last() : raft::kernel()
+    last() : raft::test::last< obj_t >()
     {
-#ifdef STRING_NAMES        
-        input.addPort< obj_t >( "x" );
-#else
-        input.addPort< obj_t >( "x"_port );
-#endif
     }
 
     virtual ~last() = default;
 
-    virtual raft::kstatus run()
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut,
+                                            raft::Task *task )
     {
         obj_t mem;
 #ifdef STRING_NAMES        
-        input[ "x" ].pop( mem );
+        dataIn[ "x" ].pop( mem, task );
 #else
-        input[ "x"_port ].pop( mem );
+        dataIn[ "x"_port ].pop( mem, task );
 #endif
         C.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         /** Jan 2016 - otherwise end up with a signed/unsigned compare w/auto **/
@@ -146,7 +135,7 @@ public:
             }
         }
         counter++;
-        return( raft::proceed );
+        return( raft::kstatus::proceed );
     }
 
 private:
@@ -160,9 +149,9 @@ main()
     last l;
     middle m;
 
-    raft::map M;
-    M += s >> m >> l;
-    M.exe();
+    raft::DAG dag;
+    dag += s >> m >> l;
+    dag.exe< raft::RuntimeFIFO >();
     for( std::size_t  i( 0 ); i < A.size(); i++ )
     {
         if( ( A[ i ] != B[ i ] ) && ( B[ i ] == C[ i ] ) )

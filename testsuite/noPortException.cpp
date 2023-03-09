@@ -5,43 +5,22 @@
 
 #include <raft>
 #include <raftio>
+#include "pipeline.tcc"
 
 
-struct big_t
-{
-    int i;
-    std::uintptr_t start;
-#ifdef ZEROCPY
-    char padding[ 100 ];
-#else
-    char padding[ 32 ];
-#endif
-};
-
-
+using obj_t = int;
 
 /**
  * Producer: sends down the stream numbers from 1 to 10
  */
-class A : public raft::Kernel
+class A : public raft::test::start< obj_t >
 {
 private:
     int i   = 0;
 
 public:
-    A() : raft::Kernel()
+    A() : raft::test::start< obj_t >()
     {
-        add_output< big_t >( "out" );
-    }
-
-    virtual bool pop( raft::Task *task, bool dryrun )
-    {
-        return false;
-    }
-
-    virtual bool allocate( raft::Task *task, bool dryrun )
-    {
-        return task->allocate( "out", dryrun );
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
@@ -52,9 +31,8 @@ public:
 
         if ( i <= 10 ) 
         {
-            auto &c( bufOut[ "out" ].allocate< big_t >( task ) );
-            c.i = i;
-            c.start = reinterpret_cast< std::uintptr_t >( &(c.i) );
+            auto &c( bufOut[ "out" ].allocate< obj_t >( task ) );
+            c = i;
             bufOut[ "out" ].send( task );
         }
         else
@@ -74,7 +52,7 @@ class C : public raft::Kernel
 public:
     C() : raft::Kernel()
     {
-        //add_input< big_t >( "in" );
+        //add_input< obj_t >( "in" );
     }
 
     virtual bool pop( raft::Task *task, bool dryrun )
@@ -91,9 +69,8 @@ public:
                                             raft::StreamingData &bufOut,
                                             raft::Task *task )
     {
-        auto &a( dataIn[ "in" ].peek< big_t >( task ) );
-        std::cout << std::dec << a.i << " - " << std::hex << a.start << " - " << std::hex <<  
-            reinterpret_cast< std::uintptr_t >( &a.i ) << "\n";
+        auto &a( dataIn[ "in" ].peek< obj_t >( task ) );
+        std::cout << a << "\n";
         dataIn[ "in" ].recycle( task );
         return ( raft::kstatus::proceed );
     }

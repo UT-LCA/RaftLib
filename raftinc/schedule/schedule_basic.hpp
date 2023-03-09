@@ -119,16 +119,7 @@ public:
         {
             return true;
         }
-        if( ! tasks_mutex.try_lock() )
-        {
-            return false;
-        }
-        bool finished = tasks[ task ]->finished;
-        tasks_mutex.unlock();
-        return finished;
-        //return ( tasks[ task ]->finished ||
-        //         ( kernel_has_no_input_ports( task->kernel ) &&
-        //           ! kernel_has_input_data( task->kernel ) ) );
+        return (0 == task->id);
     }
 
 
@@ -150,32 +141,13 @@ public:
         task->alloc->commit( task );
         if( kstatus::stop == sig_status )
         {
-            invalidate_output_ports( task->kernel );
-            while( ! tasks_mutex.try_lock() )
-            {
-                raft::yield();
-            }
-            tasks[ task ]->finished = true;
-            tasks_mutex.unlock();
+            // indicate a source task should exit
+            task->id = 0;
         }
     }
 
     virtual void reschedule( Task* task )
     {
-        /**
-         * must recheck data items again after port valid check, there could
-         * have been a push between these two conditional statements.
-         */
-        if( shouldExit( task ) )
-        {
-            invalidate_output_ports( task->kernel );
-            while( ! tasks_mutex.try_lock() )
-            {
-                raft::yield();
-            }
-            tasks[ task ]->finished = true;
-            tasks_mutex.unlock();
-        }
         raft::yield();
     }
 
@@ -192,6 +164,7 @@ public:
 
     virtual void postexit( Task* task )
     {
+        invalidate_output_ports( task->kernel );
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();

@@ -7,47 +7,7 @@
 #include <tuple>
 #include "generate.tcc"
 #include "defs.hpp"
-
-
-template< typename A, typename B, typename C > class Sum : public raft::Kernel
-{
-public:
-    Sum() : raft::Kernel()
-    {
-        add_input< A >( "input_a" );
-        add_input< B >( "input_b" );
-        add_output< C >( "sum" );
-    }
-
-    virtual bool pop( raft::Task *task, bool dryrun )
-    {
-        return task->pop( "input_a", dryrun ) &&
-               task->pop( "input_b", dryrun );
-    }
-
-    virtual bool allocate( raft::Task *task, bool dryrun )
-    {
-        return task->allocate( "sum", dryrun );
-    }
-
-    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
-    {
-        A a;
-        B b;
-        dataIn[ "input_a" ].pop< A >( a, task );
-        dataIn[ "input_b" ].pop< B >( b, task );
-        C c( static_cast< C >( a + b ) );
-        bufOut[ "sum" ].push< C >( c, task );
-        //if( sig_b == raft::eof )
-        //{
-        //   return( raft::stop );
-        //}
-        return( raft::kstatus::proceed );
-    }
-
-};
+#include "pipeline.tcc"
 
 
 int
@@ -60,10 +20,10 @@ main( int argc, char **argv )
     }
     using send_t = std::int64_t;
     using wrong_t = float;
-    using gen   = raft::test::generate< send_t >;
-    using sum = Sum< send_t,
-                     wrong_t,
-                     send_t >;
+    using gen = raft::test::generate< send_t >;
+    using sum = raft::test::sum< send_t,
+                                 wrong_t,
+                                 send_t >;
     using p_out = raft::print< send_t, '\n' >;
     raft::DAG dag;
     gen g1( count ), g2( count );

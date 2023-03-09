@@ -1,10 +1,11 @@
 /**
- * random.cpp - 
- * @author: Jonathan Beard
- * @version: Mon Mar  2 14:00:14 2015
- * 
+ * random.cpp -
+ * @author: Jonathan Beard, Qinzhe Wu
+ * @version: Wed Mar  8 23:46:14 2023
+ *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2015 Jonathan Beard
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at:
@@ -36,30 +37,36 @@
                                type_t >;
    using p_out = raft::print< type_t, '\n' >;
    using sub = raft::lambdak< type_t >;
-   
+
    std::vector< type_t > output;
-   
+
    const static auto min( 0 );
    const static auto max( 100 );
    gen g( send_size, min, max );
-   
+
    p_out print;
 
-   auto  l_sub( [&]( Port &input,
-                     Port &output )
-      {
-         std::uint32_t a;
-         input[ "0" ].pop( a );
-         output[ "0" ].push( a - 10 );
-         return( raft::proceed );
-      } );
+   auto l_sub( [&]( raft::StreamingData &dataIn,
+                    raft::StreamingData &bufOut,
+                    raft::Task *task )
+   {
+       std::uint32_t a;
+       dataIn[ "0" ].pop( a, task );
+       bufOut[ "0" ].push( a - 10, task );
+       return( raft::kstatus::proceed );
+   } );
+   auto l_pop( [&]( raft::Task *task,
+                    bool dryrun )
+   {
+       return task->pop( "0", dryrun );
+   } );
 
-   sub s( 1, 1, l_sub );
+   sub s( 1, 1, l_sub, l_pop );
 
-   raft::map m;
-   m += g >> s >> print;
-   
-   m.exe();
+   raft::DAG dag;
+   dag += g >> s >> print;
+
+   dag.exe< raft::RuntimeFIFO >();
 
    return( EXIT_SUCCESS );
  }
