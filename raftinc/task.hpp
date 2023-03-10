@@ -35,17 +35,16 @@ class Schedule;
 
 enum TaskType
 {
-    PollingWorkerTask,
-    OneShotTask
+    POLLING_WORKER,
+    ONE_SHOT
 };
 
 struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
 {
     Kernel *kernel;
-    Allocate *alloc;
-    Schedule *sched;
     TaskType type;
     std::size_t id;
+    bool finished = false;
 
     virtual kstatus::value_t exe() = 0;
 

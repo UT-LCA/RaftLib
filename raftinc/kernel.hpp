@@ -315,6 +315,38 @@ protected:
                 std::forward< PORTNAMES >( portnames )... );
     }
 
+    /**
+     * get_port - get the port info with the given name.
+     * Function throw an exception if no port found.
+     * @param   port - port_map_t&
+     * @param   port_name - const port_name_t&
+     */
+    static PortInfo &get_port( port_map_t &port,
+                               const port_name_t &name )
+    {
+        if( null_port_value == name )
+        {
+            if( 0 == port.size() )
+            {
+                throw PortNotFoundException(
+                        "At least one port must be defined" );
+            }
+            else if( 1 < port.size() )
+            {
+                throw AmbiguousPortAssignmentException(
+                        "One port expected, more than one found!" );
+            }
+            return port.begin()->second;
+        }
+        else if( port.end() == port.find( name ) )
+        {
+            std::stringstream ss;
+            ss << "Port not found for name \"" << name << "\"";
+            throw PortNotFoundException( ss.str() );
+        }
+        return port[ name ];
+    }
+
 private:
 
     /**
@@ -357,32 +389,14 @@ private:
         return;
     }
 
-    static PortInfo &get_port( port_map_t &port,
-                               const port_name_t &name )
-    {
-        if( null_port_value == name )
-        {
-            if( 0 == port.size() )
-            {
-                throw PortNotFoundException(
-                        "At least one port must be defined" );
-            }
-            else if( 1 < port.size() )
-            {
-                throw AmbiguousPortAssignmentException(
-                        "One port expected, more than one found!" );
-            }
-            return port.begin()->second;
-        }
-        else if( port.end() == port.find( name ) )
-        {
-            std::stringstream ss;
-            ss << "Port not found for name \"" << name << "\"";
-            throw PortNotFoundException( ss.str() );
-        }
-        return port[ name ];
-    }
-
+    /**
+     * set_port - populate the port info with the port info of another kernel
+     * essentially bind two ports. Function throw an exception if the port
+     * already connect.
+     * @param   port - port_map_t&
+     * @param   port_name - const port_name_t&
+     * @param   other - const PortInfo&
+     */
     static void set_port( port_map_t &port, const port_name_t &name,
                           const PortInfo &other )
     {
@@ -396,11 +410,23 @@ private:
         p.other_port = &other;
     }
 
+    /**
+     * set_input - wrapper of set_port for input ports.
+     * Function throw an exception if the port already connect.
+     * @param   port_name - const port_name_t&
+     * @param   other - const PortInfo&
+     */
     void set_input( const port_name_t &name, const PortInfo &other )
     {
         set_port( input, name, other );
     }
 
+    /**
+     * set_output - wrapper of set_port for output ports.
+     * Function throw an exception if the port already connect.
+     * @param   port_name - const port_name_t&
+     * @param   other - const PortInfo&
+     */
     void set_output( const port_name_t &name, const PortInfo &other )
     {
         set_port( output, name, other );

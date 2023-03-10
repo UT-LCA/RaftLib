@@ -83,7 +83,7 @@ public:
                 if( ! t_info->joined )
                 {
                     //loop over each thread and check if done
-                    if( t_info->finished )
+                    if( t_info->task->finished )
                     {
                         /**
                          * FIXME: the list could get huge for long running
@@ -119,7 +119,7 @@ public:
         {
             return true;
         }
-        return (0 == task->id);
+        return task->finished;
     }
 
 
@@ -138,11 +138,11 @@ public:
 
     virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
-        task->alloc->commit( task );
+        Singleton::allocate()->commit( task );
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            task->id = 0;
+            task->finished = true;
         }
     }
 
@@ -153,7 +153,7 @@ public:
 
     virtual void prepare( Task* task )
     {
-        while( ! task->alloc->isReady() )
+        while( ! Singleton::allocate()->isReady() )
         {
             raft::yield();
         }
@@ -165,12 +165,7 @@ public:
     virtual void postexit( Task* task )
     {
         invalidate_output_ports( task->kernel );
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        tasks[ task ]->finished = true;
-        tasks_mutex.unlock();
+        task->finished = true;
     }
 
 protected:
@@ -189,17 +184,18 @@ protected:
          * kernel is done, it can be rescheduled...and this
          * handles that.
          */
+        PollingWorker *task = new PollingWorker();
+        task->kernel = kernel;
+        task->id = kernel->getId();
+        task->type = POLLING_WORKER;
+
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
         }
-        PollingWorker *task = new PollingWorker();
-        task->kernel = kernel;
-        task->id = kernel->getId();
-        task->type = PollingWorkerTask;
-        task->sched = this;
-        task->alloc = alloc;
-        tasks.insert( std::make_pair( task, new task_data_t( task ) ) );
+        task_id = ( task_id <= task->id ) ? ( task->id + 1 ) : task_id;
+        std::cout << "tasks[" << task->id << "] set\n";
+        tasks.insert( std::make_pair( task->id, new task_data_t( task ) ) );
         /** we got here, unlock **/
         tasks_mutex.unlock();
 
@@ -419,21 +415,21 @@ protected:
 
     struct task_data_t
     {
-        task_data_t( PollingWorker *task ) :
-            worker( task ), th( [ & ](){ (this)->worker->exe(); } )
+        task_data_t( Task *the_task ) :
+            task( the_task ), th( [ & ](){ (this)->task->exe(); } )
         {
         }
 
-        PollingWorker *worker;
-        bool finished = false;
+        Task *task;
         bool joined = false;
         std::thread th;
         /* map every polling worker to a kthread */
     };
 
     std::mutex tasks_mutex;
-    std::unordered_map< Task*, task_data_t* > tasks;
+    std::size_t task_id = 1;
+    std::unordered_map< std::size_t, task_data_t* > tasks;
 };
 
 } /** end namespace raft **/
-#endif /* END RAFT_SCHEDULE_SCHEDULE_HPP */
+#endif /* END RAFT_SCHEDULE_SCHEDULE_BASIC_HPP */

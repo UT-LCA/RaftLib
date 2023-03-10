@@ -23,6 +23,7 @@
 #include "signalhandler.hpp"
 #include "rafttypes.hpp"
 #include "defs.hpp"
+#include "singleton.hpp"
 #include <affinity>
 
 namespace raft {
@@ -34,7 +35,12 @@ class Schedule
 {
 public:
 
-    Schedule() = default;
+    Schedule()
+    {
+        /* set myself as the singleton scheduler */
+        Singleton::schedule( this );
+    }
+
     virtual ~Schedule() = default;
 
     virtual void schedule() = 0;

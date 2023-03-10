@@ -20,7 +20,7 @@ if( STRING_NAMES )
          disconnectedGraph
          twiceAdd
          bracketsTest
-         #partitionTest
+         partitionTest
          fixedMatchTest
          stdlibsupport
          armqMini
@@ -35,7 +35,7 @@ if( STRING_NAMES )
          allocatePopInternalObject
          allocatePopExternal
          lambdatest
-         #foreach
+         foreach
          #dynallocate
          #split
          #join

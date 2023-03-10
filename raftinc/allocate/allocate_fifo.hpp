@@ -116,12 +116,23 @@ public:
     {
         auto func = [ & ]( PortInfo &a, PortInfo &b, void *data )
         {
-            a.alloc = this;
-            b.alloc = this;
-            FIFO *fifo =
-                get_FIFOFunctor( a )->make_new_fifo( INITIAL_ALLOC_SIZE,
-                                                     ALLOC_ALIGN_WIDTH,
-                                                     nullptr );
+            FIFO *fifo;
+            if( nullptr != a.runtime_info.existing_buffer.ptr )
+            {
+                /* use existing buffer from a */
+                fifo = get_FIFOFunctor(
+                        a )->make_new_fifo(
+                            a.runtime_info.existing_buffer.nitems,
+                            a.runtime_info.existing_buffer.start_index,
+                            a.runtime_info.existing_buffer.ptr );
+            }
+            else
+            {
+                fifo =
+                    get_FIFOFunctor( a )->make_new_fifo( INITIAL_ALLOC_SIZE,
+                                                         ALLOC_ALIGN_WIDTH,
+                                                         nullptr );
+            }
             a.runtime_info.fifo = b.runtime_info.fifo = fifo;
             (this)->allocated_fifo.insert( fifo );
         };
@@ -418,7 +429,7 @@ protected:
      */
     static void task_commit( Task *task, StreamingData *buf )
     {
-        if( PollingWorkerTask == task->type )
+        if( POLLING_WORKER == task->type )
         {
             delete buf;
             return;

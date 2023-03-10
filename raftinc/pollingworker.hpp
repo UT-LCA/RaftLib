@@ -43,25 +43,23 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 
     kstatus::value_t exe()
     {
-        (this)->sched->prepare( this );
-        while( ! (this)->sched->shouldExit( this ) )
+        Singleton::schedule()->prepare( this );
+        while( ! Singleton::schedule()->shouldExit( this ) )
         {
-            if( (this)->sched->readyRun( this ) )
+            if( Singleton::schedule()->readyRun( this ) )
             {
-                (this)->sched->precompute( this );
+                Singleton::schedule()->precompute( this );
                 StreamingData dummy0, dummy1;
                 const auto sig_status(
                         (this)->kernel->compute(
                             dummy0,
                             dummy1,
-                            //(this)->alloc->getDataIn( this ),
-                            //(this)->alloc->getBufOut( this ),
                             this ) );
-                (this)->sched->postcompute( this, sig_status );
+                Singleton::schedule()->postcompute( this, sig_status );
             }
-            (this)->sched->reschedule( this );
+            Singleton::schedule()->reschedule( this );
         }
-        (this)->sched->postexit( this );
+        Singleton::schedule()->postexit( this );
 
         return kstatus::stop;
     }

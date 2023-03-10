@@ -111,6 +111,13 @@ public:
     }
 
     Kpair&
+    operator >> ( Kernel *rhs )
+    {
+        auto *ptr( new Kpair( *this, rhs ) );
+        return( *ptr );
+    }
+
+    Kpair&
     operator >> ( KernelPort &rhs )
     {
         auto *ptr( new Kpair( *this, rhs ) );

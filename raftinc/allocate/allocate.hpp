@@ -25,6 +25,7 @@
 #include "defs.hpp"
 #include "streamingdata.hpp"
 #include "exceptions.hpp"
+#include "singleton.hpp"
 
 
 namespace raft
@@ -35,7 +36,12 @@ class Task;
 class Allocate
 {
 public:
-    Allocate() = default;
+    Allocate()
+    {
+        /* set myself as the singleton allocator */
+        Singleton::allocate( this );
+    }
+
     virtual ~Allocate() = default;
 
     virtual void allocate()

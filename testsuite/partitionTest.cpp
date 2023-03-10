@@ -12,27 +12,27 @@ main( int argc, char **argv )
     int count( 1000 );
     if( argc == 2 )
     {
-       count = atoi( argv[ 1 ] );
+        count = atoi( argv[ 1 ] );
     }
                                                                
     raft::test::generate< std::uint32_t > rndgen( count );
     raft::print< std::uint32_t, '\n' > p;
 
     using sub = raft::lambdak< std::uint32_t >;
-    auto  l_sub( []( Port &input,
-                     Port &output ) -> raft::kstatus
-       {
-          std::uint32_t a;
-          input[ "0" ].pop( a );
-          output[ "0" ].push( a - 10 );
-          return( raft::proceed );
-       } );
+    auto l_sub( []( raft::StreamingData &dataIn,
+                    raft::StreamingData &bufOut,
+                    raft::Task *task ) -> raft::kstatus::value_t
+    {
+        std::uint32_t a;
+        dataIn[ "0" ].pop( a, task );
+        bufOut[ "0" ].push( a - 10, task );
+        return( raft::kstatus::proceed );
+    } );
 
-    raft::map m;
+    raft::DAG dag;
     /** make one sub kernel, this one will live on the stack **/
     sub s( 1, 1, l_sub );
-    kernel_pair_t::kernel_iterator_type BEGIN, END;
-    auto kernels( m += rndgen >> s );
+    raft::Kpair *kpair = &( rndgen >> s );
     for( int i( 0 ); i < 
 #ifdef USEQTHREADS
     1000
@@ -41,12 +41,9 @@ main( int argc, char **argv )
 #endif
     ; i++ )
     {
-        std::tie( BEGIN, END ) = kernels.getDst();
-        //kernels = ( m += (*BEGIN).get() >> raft::kernel_wrapper::make< sub >( 1, 1, l_sub ) );
-        kernels = ( m += (*BEGIN).get() >> raft::kernel_maker< sub >( 1, 1, l_sub ) );
+        kpair = &( ( *kpair ) >> raft::kernel_maker< sub >( 1, 1, l_sub ) );
     }
-    std::tie( BEGIN, END ) = kernels.getDst();
-    m += (*BEGIN).get() >> p;
-    m.exe();
+    dag += *kpair >> p;
+    dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

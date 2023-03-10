@@ -36,11 +36,11 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
     {
         if( dryrun )
         {
-            return alloc->getDataIn( this, portname );
+            return Singleton::allocate()->getDataIn( this, portname );
         }
         else
         {
-            return alloc->dataInReady( this, portname );
+            return Singleton::allocate()->dataInReady( this, portname );
         }
     }
 
@@ -48,22 +48,22 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
     {
         if( dryrun )
         {
-            return alloc->getBufOut( this, portname );
+            return Singleton::allocate()->getBufOut( this, portname );
         }
         else
         {
-            return alloc->bufOutReady( this, portname );
+            return Singleton::allocate()->bufOutReady( this, portname );
         }
     }
 
     virtual StreamingData &getDataIn()
     {
-        return alloc->getDataIn( this );
+        return Singleton::allocate()->getDataIn( this );
     }
 
     virtual StreamingData &getBufOut()
     {
-        return alloc->getBufOut( this );
+        return Singleton::allocate()->getBufOut( this );
     }
 };
 

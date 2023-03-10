@@ -35,6 +35,30 @@ namespace raft
 class Kernel;
 class Allocate;
 
+struct BufferInfo
+{
+    BufferInfo() {}
+    BufferInfo( void * const ptr_,
+                const std::size_t nitems_,
+                const std::size_t start_index_ ) :
+        ptr( ptr_ ), nitems( nitems_ ), start_index( start_index_ ) {}
+    BufferInfo( const BufferInfo &other ) :
+        ptr( other.ptr ), nitems( other.nitems ),
+        start_index( other.start_index ) {}
+    BufferInfo &operator=( const BufferInfo &other )
+    {
+        (this)->ptr = other.ptr;
+        (this)->nitems = other.nitems;
+        (this)->start_index = other.start_index;
+        return *this;
+    }
+
+    void * ptr = nullptr;
+    std::size_t nitems = 0;
+    std::size_t start_index = 0;
+    /* [0:start_index) out of nitems of the buffer have valid data */
+};
+
 /* put the type specific port info data structures used
  * by all runtimes here.
  */
@@ -43,6 +67,7 @@ struct PortInfo4Runtime
     /* AllocateFIFO */
     FIFOFunctor *fifo_functor;
     FIFO *fifo;
+    BufferInfo existing_buffer;
     //using FIFO_constructor =
     //    FIFO* ( std::size_t /** n_items **/,
     //            std::size_t /** alignof */,
@@ -67,7 +92,9 @@ struct PortInfo
     PortInfo( const PortInfo &other ) :
         type( other.type ),
         my_kernel( other.my_kernel ), my_name( other.my_name ),
-        other_kernel( other.other_kernel ), other_name( other.other_name ) {}
+        other_kernel( other.other_kernel ), other_name( other.other_name )
+    {
+    }
 
     virtual ~PortInfo() = default;
 
@@ -75,6 +102,11 @@ struct PortInfo
     void typeSpecificRuntimeInit()
     {
         runtime_info.init< T >();
+    }
+
+    void setExistingBuffer( BufferInfo &buf_info )
+    {
+        runtime_info.existing_buffer = buf_info;
     }
 
     /**

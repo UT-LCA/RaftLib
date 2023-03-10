@@ -50,6 +50,9 @@ struct DataHeapBase : public DataBase< T >
 
         /** set index to be start_position **/
         (this)->signal[ 0 ].index  = start_position;
+        /** assuming the reason why user provides a pointer is the pointer
+         * points to a buffer fully written, so set write_pt 1 wrap */
+        new ( &(this)->write_pt) Pointer( max_cap, 1 );
    }
 
    DataHeapBase( const std::size_t max_cap ,

@@ -149,7 +149,7 @@ struct AddSamePortsHelper< PORT, PORTSK... >
         {
             kernel->addInput< PORT >( std::to_string( it ) );
         }
-    
+
         using output_index_type = std::remove_const_t<decltype(output_count)>;
         for( output_index_type it( 0 ); it < output_count; it++ )
         {
