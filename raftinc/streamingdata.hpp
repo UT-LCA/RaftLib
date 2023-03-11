@@ -57,19 +57,24 @@ public:
     StreamingData() = default;
 
     template< class T >
-    void set( const port_name_t &name, T &data_ref )
+    void setT( const port_name_t &name, T &data_ref )
     {
         store.insert( std::make_pair( name, DataRef() ) );
         store[ name ].set< T >( data_ref );
     }
 
     template< class T >
-    T &get( const port_name_t &name )
+    T &getT( const port_name_t &name )
     {
         return store[ name ].get< T >();
     }
 
     void set( const port_name_t &name, const DataRef &ref )
+    {
+        store.insert( std::make_pair( name, ref ) );
+    }
+
+    void set( const port_name_t &name, DataRef &&ref )
     {
         store.insert( std::make_pair( name, ref ) );
     }

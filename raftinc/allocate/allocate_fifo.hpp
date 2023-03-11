@@ -32,6 +32,7 @@
 #include "kernel.hpp"
 #include "port_info.hpp"
 #include "exceptions.hpp"
+#include "oneshottask.hpp"
 #include "allocate/allocate.hpp"
 #include "allocate/fifo.hpp"
 #include "allocate/ringbuffer.tcc"
@@ -175,17 +176,12 @@ public:
 
     virtual StreamingData &getBufOut( Task *task )
     {
-        //FIXME: what is the logic for oneshot task?
-        //allocate all potential output buffers first
-        buf_packed[ task ] = &kernel_pack_output_buf( task->kernel );
-        return *buf_packed[ task ];
+        return task_pack_output_buf( task );
     }
 
     virtual void commit( Task *task )
     {
-        task_commit( task, buf_packed[ task ] );
-        buf_packed[ task ] = nullptr;
-        //kernel_commit( task->kernel );
+        task_commit( task );
     }
 
 protected:
@@ -395,8 +391,21 @@ protected:
                 ptr->set( name, get_FIFOFunctor( info )->allocate( fifo ) );
             }
         }
-        // ptr->clearTouchedMarks();
         return( *ptr );
+    }
+
+    /**
+     * task_pack_output_buf - assemble buffer for outputs.
+     * @param task - raft::Task*
+     * @return StreamingData.
+     */
+    static StreamingData &task_pack_output_buf( Task *task )
+    {
+        assert( ONE_SHOT == task->type );
+        auto &buf( kernel_pack_output_buf( task->kernel ) );
+        auto *t( reinterpret_cast< OneShotTask* >( task ) );
+        t->stream_out = &buf;
+        return buf;
     }
 
     /**
@@ -427,14 +436,15 @@ protected:
      * @param buf - raft::StreamingData*
      * @return StreamingData.
      */
-    static void task_commit( Task *task, StreamingData *buf )
+    static void task_commit( Task *task )
     {
         if( POLLING_WORKER == task->type )
         {
-            delete buf;
             return;
         }
 
+        auto *oneshot_t( reinterpret_cast< OneShotTask* >( task ) );
+        auto *buf( oneshot_t->stream_out );
         //TODO: what is the logic to cleanup oneshot task buffer and data?
         auto *kernel( task->kernel );
         auto &output_list( kernel->output );
@@ -454,7 +464,6 @@ protected:
             get_FIFOFunctor( info )->recycle( get_FIFO( info ) );
         }
 
-        delete buf;
     }
 
     /** both convenience structs, hold exactly what the names say **/
@@ -465,8 +474,6 @@ protected:
      * keeps a list of all currently allocated FIFO objects
      */
     std::unordered_set< FIFO* > allocated_fifo;
-
-    std::unordered_map< Task*, StreamingData* > buf_packed;
 
     volatile bool exited = false;
     volatile bool ready = false;

@@ -29,11 +29,12 @@
 namespace raft
 {
 
-class RuntimeFIFO : public RuntimeBase
+template< class SCHEDULER >
+class RuntimeFIFOTemp : public RuntimeBase
 {
 public:
 
-    RuntimeFIFO( DAG &the_dag ) : RuntimeBase( the_dag ) {}
+    RuntimeFIFOTemp( DAG &the_dag ) : RuntimeBase( the_dag ) {}
 
     /**
      * run - function to be extended for the actual execution of the DAG.
@@ -46,11 +47,14 @@ public:
         AllocateFIFO allocator( dag_partitioned );
         auto &dag_allocated( allocator.allocate( dag_partitioned ) );
 
-        ScheduleBasic scheduler( dag_allocated, &allocator );
+        SCHEDULER scheduler( dag_allocated, &allocator );
         scheduler.schedule();
     }
 
 };
+
+using RuntimeFIFO = RuntimeFIFOTemp< ScheduleBasic >;
+using RuntimeFIFOOneShot = RuntimeFIFOTemp< ScheduleOneShot >;
 
 } /** end namespace raft **/
 

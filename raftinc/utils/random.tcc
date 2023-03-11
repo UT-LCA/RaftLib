@@ -46,7 +46,8 @@ public:
         for( auto i( 0 ); i < STATICPORT; i++ )
         {
 #endif
-        inc_output< TYPE >();
+        std::size_t idx = inc_output< TYPE >();
+        out_names.push_back( std::to_string( idx ) );
 #ifdef STATICPORT
         }
 #endif
@@ -77,7 +78,7 @@ public:
                                             StreamingData &bufOut,
                                             Task *task )
     {
-        for( auto &name : task->getNamesOut() )
+        for( auto &name : out_names )
         {
             bufOut[ name ].push( dist( gen ), task );
             if( ++count_of_sent >= N )
@@ -103,6 +104,7 @@ private:
     DIST< TYPE >    dist;
     std::size_t     count_of_sent = 0;
     const std::size_t N;
+    std::vector< port_name_t > out_names;
 };
 
 

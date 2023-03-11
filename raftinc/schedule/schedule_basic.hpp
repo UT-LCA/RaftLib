@@ -28,12 +28,24 @@
 #include "sysschedutil.hpp"
 #include "dag.hpp"
 #include "task.hpp"
+#include "allocate/allocate.hpp"
 #include "pollingworker.hpp"
 #include <affinity>
 
 namespace raft {
 
-class Allocate;
+struct StdThreadSchedMeta : public TaskSchedMeta
+{
+    StdThreadSchedMeta( Task *the_task ) :
+        TaskSchedMeta( the_task ), th( [ & ](){
+                (this)->task->sched_meta = this;
+                (this)->task->exe(); } )
+    {
+    }
+
+    std::thread th;
+    /* map every task to a kthread */
+};
 
 
 class ScheduleBasic : public Schedule
@@ -77,26 +89,22 @@ public:
             }
             //exit, we have a lock
             keep_going = false;
-            for( auto &t_pair : tasks )
+            TaskSchedMeta* tparent( tasks );
+            //loop over each thread and check if done
+            while( nullptr != tparent->next )
             {
-                auto *t_info( t_pair.second );
-                if( ! t_info->joined )
+                auto *tmeta( reinterpret_cast< StdThreadSchedMeta* >(
+                            tparent->next ) );
+                if( tmeta->finished )
                 {
-                    //loop over each thread and check if done
-                    if( t_info->task->finished )
-                    {
-                        /**
-                         * FIXME: the list could get huge for long running
-                         * apps, need to delete these entries...especially
-                         * since we have a lock on the list now
-                         */
-                        t_info->th.join();
-                        t_info->joined = true;
-                    }
-                    else /* a kernel ! finished */
-                    {
-                        keep_going =  true;
-                    }
+                    tmeta->th.join();
+                    tparent->next = tmeta->next;
+                    delete tmeta;
+                }
+                else /* a task ! finished */
+                {
+                    tparent = tmeta;
+                    keep_going = true;
                 }
             }
             //if we're here we have a lock and need to unlock
@@ -119,7 +127,7 @@ public:
         {
             return true;
         }
-        return task->finished;
+        return task->sched_meta->finished;
     }
 
 
@@ -142,7 +150,7 @@ public:
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            task->finished = true;
+            task->sched_meta->finished = true;
         }
     }
 
@@ -165,7 +173,7 @@ public:
     virtual void postexit( Task* task )
     {
         invalidate_output_ports( task->kernel );
-        task->finished = true;
+        task->sched_meta->finished = true;
     }
 
 protected:
@@ -194,8 +202,10 @@ protected:
             raft::yield();
         }
         task_id = ( task_id <= task->id ) ? ( task->id + 1 ) : task_id;
-        std::cout << "tasks[" << task->id << "] set\n";
-        tasks.insert( std::make_pair( task->id, new task_data_t( task ) ) );
+        auto *tmeta( new StdThreadSchedMeta( task ) );
+        /* insert into tasks linked list */
+        tmeta->next = tasks->next;
+        tasks->next = tmeta;
         /** we got here, unlock **/
         tasks_mutex.unlock();
 
@@ -412,23 +422,6 @@ protected:
     kernelkeeper sink_kernels;
 
     Allocate *alloc;
-
-    struct task_data_t
-    {
-        task_data_t( Task *the_task ) :
-            task( the_task ), th( [ & ](){ (this)->task->exe(); } )
-        {
-        }
-
-        Task *task;
-        bool joined = false;
-        std::thread th;
-        /* map every polling worker to a kthread */
-    };
-
-    std::mutex tasks_mutex;
-    std::size_t task_id = 1;
-    std::unordered_map< std::size_t, task_data_t* > tasks;
 };
 
 } /** end namespace raft **/

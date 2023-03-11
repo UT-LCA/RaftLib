@@ -37,6 +37,11 @@ public:
 
     virtual ~start() = default;
 
+    void reset()
+    {
+        counter = 0;
+    }
+
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut,
                                             raft::Task *task )
@@ -63,6 +68,14 @@ public:
 
     virtual ~last() = default;
 
+    void reset()
+    {
+        for( int i( 0 ); 200 > i; ++i )
+        {
+            checkboard[ i ] = 0;
+        }
+    }
+
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut,
                                             raft::Task *task )
@@ -70,16 +83,17 @@ public:
         obj_t in;
         dataIn[ "x" ].pop< obj_t >( in, task );
         std::cout << in << std::endl;
-        if( in != counter++ )
+        if( 0 != checkboard[ in ] )
         {
             std::cerr << "failed exit\n";
             exit( EXIT_FAILURE );
         }
+        checkboard[ in ]++;
         return( raft::kstatus::proceed );
     }
 
 private:
-    obj_t counter = 0;
+    obj_t checkboard[ 200 ] = { 0 };
 };
 
 
@@ -92,5 +106,9 @@ main()
     raft::DAG dag;
     dag += s >> l;
     dag.exe< raft::RuntimeFIFO >();
+
+    s.reset();
+    l.reset();
+    dag.exe< raft::RuntimeFIFOOneShot >();
     return( EXIT_SUCCESS );
 }

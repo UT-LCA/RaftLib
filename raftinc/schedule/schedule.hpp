@@ -24,12 +24,20 @@
 #include "rafttypes.hpp"
 #include "defs.hpp"
 #include "singleton.hpp"
-#include <affinity>
+#include <mutex>
 
 namespace raft {
 
 class Kernel;
 class Task;
+
+struct TaskSchedMeta
+{
+    TaskSchedMeta( Task *the_task = nullptr ) : task( the_task ) {}
+    Task * const task;
+    bool finished = false;
+    TaskSchedMeta * volatile next = nullptr;
+};
 
 class Schedule
 {
@@ -39,6 +47,7 @@ public:
     {
         /* set myself as the singleton scheduler */
         Singleton::schedule( this );
+        tasks = new TaskSchedMeta(); /* dummy head */
     }
 
     virtual ~Schedule() = default;
@@ -58,6 +67,12 @@ public:
 
     virtual void prepare( Task* task ) = 0;
     virtual void postexit( Task* task ) = 0;
+
+protected:
+
+    std::mutex tasks_mutex;
+    TaskSchedMeta *tasks; /* the head of tasks linked list */
+    volatile std::size_t task_id = 1;
 
 }; /** end Schedule decl **/
 

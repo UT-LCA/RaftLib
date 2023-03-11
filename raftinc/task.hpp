@@ -32,6 +32,7 @@ class DataRef;
 class StreamingData;
 class Allocate;
 class Schedule;
+class TaskSchedMeta;
 
 enum TaskType
 {
@@ -44,7 +45,8 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
     Kernel *kernel;
     TaskType type;
     std::size_t id;
-    bool finished = false;
+    TaskSchedMeta *sched_meta;
+    /* for scheduler to store per-task meta data, thread-safe access */
 
     virtual kstatus::value_t exe() = 0;
 
@@ -64,9 +66,17 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
 
     virtual bool allocate( const port_name_t &portname, bool dryrun ) = 0;
 
-    virtual std::vector< port_name_t > &getNamesIn() = 0;
+    virtual std::vector< port_name_t > &getNamesIn()
+    {
+        std::cerr << "Invalid placeholder for getNamesIn()\n";
+        return *( new std::vector< port_name_t >() );
+    }
 
-    virtual std::vector< port_name_t > &getNamesOut() = 0;
+    virtual std::vector< port_name_t > &getNamesOut()
+    {
+        std::cerr << "Invalid placeholder for getNamesOut()\n";
+        return *( new std::vector< port_name_t >() );
+    }
 
     virtual StreamingData &getDataIn() = 0;
 

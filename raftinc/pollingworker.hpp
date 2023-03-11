@@ -51,10 +51,7 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
                 Singleton::schedule()->precompute( this );
                 StreamingData dummy0, dummy1;
                 const auto sig_status(
-                        (this)->kernel->compute(
-                            dummy0,
-                            dummy1,
-                            this ) );
+                        (this)->kernel->compute( dummy0, dummy1, this ) );
                 Singleton::schedule()->postcompute( this, sig_status );
             }
             Singleton::schedule()->reschedule( this );

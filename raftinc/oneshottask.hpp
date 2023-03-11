@@ -24,21 +24,62 @@
 #include "defs.hpp"
 #include "rafttypes.hpp"
 #include "task.hpp"
+#include "task_impl.hpp"
 #include "allocate/allocate.hpp"
 #include "schedule/schedule.hpp"
 
 namespace raft
 {
 
-struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : Task
+struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 {
+    StreamingData *stream_in;
+    StreamingData *stream_out;
+
     kstatus::value_t exe()
     {
-        //assert( (this)->sched->readyRun( this ) );
-        (this)->kernel->compute( (this)->alloc->getDataIn( this ),
-                                 (this)->alloc->getBufOut( this ) );
-        (this)->sched->schedule( this );
+        Singleton::schedule()->precompute( this );
+        const auto sig_status(
+                (this)->kernel->compute( *stream_in, *stream_out, this ) );
+        Singleton::schedule()->postcompute( this, sig_status );
+        Singleton::schedule()->reschedule( this );
         return kstatus::stop;
+    }
+
+    virtual void pop( const port_name_t &name, DataRef &item )
+    {
+        // should have all data satisfied by StreamingData
+        std::cerr << "Unlikely should OneShotTask invoke pop(" <<
+            name << ", &item)\n";
+    }
+
+    virtual DataRef peek( const port_name_t &name )
+    {
+        // should have all data satisfied by StreamingData
+        std::cerr << "Unlikely should OneShotTask invoke peek(" <<
+            name << ")\n";
+        return DataRef();
+    }
+
+    virtual void recycle( const port_name_t &name )
+    {
+        // do nothing, because we have dedicated the data for this task already
+    }
+
+    virtual void push( const port_name_t &name, DataRef &item )
+    {
+        // FIXME: multiple pushes in one exe() that exhausts buffer?
+    }
+
+    virtual DataRef allocate( const port_name_t &name )
+    {
+        // FIXME: multiple pushes in one exe() that exhausts buffer?
+        return DataRef();
+    }
+
+    virtual void send( const port_name_t &name )
+    {
+        // FIXME: multiple pushes in one exe() that exhausts buffer?
     }
 };
 

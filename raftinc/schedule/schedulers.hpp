@@ -25,5 +25,6 @@
  */
 #include "schedule.hpp"
 #include "schedule_basic.hpp"
+#include "schedule_oneshot.hpp"
 
 #endif /* END RAFT_SCHEDULE_SCHEDULERS_HPP */

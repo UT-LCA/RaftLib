@@ -29,9 +29,14 @@ main( int argc, char **argv )
         return( raft::kstatus::proceed );
     } );
 
+    auto l_pop( []( raft::Task *task, bool dryrun )
+    {
+        return task->pop( "0", dryrun );
+    } );
+
     raft::DAG dag;
     /** make one sub kernel, this one will live on the stack **/
-    sub s( 1, 1, l_sub );
+    sub s( 1, 1, l_sub, l_pop );
     raft::Kpair *kpair = &( rndgen >> s );
     for( int i( 0 ); i < 
 #ifdef USEQTHREADS
@@ -41,7 +46,8 @@ main( int argc, char **argv )
 #endif
     ; i++ )
     {
-        kpair = &( ( *kpair ) >> raft::kernel_maker< sub >( 1, 1, l_sub ) );
+        kpair = &( ( *kpair ) >>
+                raft::kernel_maker< sub >( 1, 1, l_sub, l_pop ) );
     }
     dag += *kpair >> p;
     dag.exe< raft::RuntimeFIFO >();
