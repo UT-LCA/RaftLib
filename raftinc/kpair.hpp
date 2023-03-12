@@ -53,7 +53,7 @@ public:
     Kpair( Kernel *a,
            Kpair &b,
            const port_name_t &pa = null_port_value
-           ) : Kpair( a, b.src, pa, b.src_name )
+           ) : Kpair( a, b.src, pa )
     {
         next = &b;
         b.head = this;
@@ -70,7 +70,7 @@ public:
 
     Kpair( KernelPort &a,
            Kpair &b
-           ) : Kpair( a.kernel, b.src, a.pop_name(), b.src_name )
+           ) : Kpair( a.kernel, b.src, a.pop_name() )
     {
         next = &b;
         b.head = this;
@@ -79,7 +79,7 @@ public:
     Kpair( Kpair &a,
            Kernel *b,
            const port_name_t &pb = null_port_value
-           ) : Kpair( a.dst, b, a.dst_name, pb )
+           ) : Kpair( a.dst, b, null_port_value, pb )
     {
         head = a.head;
         a.next = this;
@@ -87,7 +87,7 @@ public:
 
     Kpair( Kpair &a,
            KernelPort &b
-           ) : Kpair( a.dst, b.kernel, a.dst_name, b.pop_name() )
+           ) : Kpair( a.dst, b.kernel, null_port_value, b.pop_name() )
     {
         head = a.head;
         a.next = this;
@@ -95,7 +95,7 @@ public:
 
     Kpair( Kpair &a,
            Kpair &b
-           ) : Kpair( a.dst, b.src, a.dst_name, b.src_name )
+           ) : Kpair( a.dst, b.src )
     {
         head = a.head;
         a.next = this;

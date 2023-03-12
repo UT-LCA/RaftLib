@@ -22,12 +22,21 @@
 
 #include "kernelport.hpp"
 #include "kpair.hpp"
+#include "kernel.hpp"
 
 template < int N >
 raft::Kpair&
 operator >> ( raft::KernelPortTemplate < N > &a, raft::Kernel *b )
 {
     auto *ptr( new raft::Kpair( a, b ) );
+    return( *ptr );
+}
+
+template < int N >
+raft::Kpair&
+operator >> ( raft::KernelPortTemplate < N > &a, raft::Kernel &b )
+{
+    auto *ptr( new raft::Kpair( a, &b ) );
     return( *ptr );
 }
 
@@ -45,6 +54,14 @@ operator >> ( raft::KernelPortTemplate < N > &a, raft::Kpair &b )
 {
     auto *ptr( new raft::Kpair( a, b ) );
     return( *ptr );
+}
+
+template < int N >
+raft::KernelPortTemplate< N >&
+operator * ( raft::KernelPortTemplate < N > &a, int b )
+{
+    a.kernel->setCloneFactor( b );
+    return a;
 }
 
 #endif /* END RAFT_KERNELPORT_OPERATORS_TCC */

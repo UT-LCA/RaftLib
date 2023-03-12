@@ -192,6 +192,16 @@ public:
         return( *ptr );
     }
 
+    /**
+     * k0 >> ( k1 >> k2 )
+     * kpair = &( *kernel_maker< K > >> *kpair )
+     */
+    Kpair& operator >> ( Kpair &rhs )
+    {
+        auto *ptr( new Kpair( this, rhs ) );
+        return( *ptr );
+    }
+
 
     Kernel& operator * ( const int factor )
     {

@@ -27,6 +27,7 @@
 #include "./raftinc/dag.hpp"
 #include "./raftinc/port_info.hpp"
 #include "./raftinc/rafttypes.hpp"
+#include "./raftinc/kernelport_operators.tcc"
 #include "./raftinc/runtime.hpp"
 #include "./raftinc/partition/partition.hpp"
 #include "./raftinc/allocate/allocate.hpp"

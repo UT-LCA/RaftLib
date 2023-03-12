@@ -43,13 +43,13 @@ main()
 
     val2.set< type0_t >( val0 );
 
-    sd.set< type0_t >( "int32_t", val0 );
-    sd.set< type1_t >( "char[16]", val1 );
-    sd.set< type2_t >( "DataRef", val2 );
+    sd.setT< type0_t >( "int32_t", val0 );
+    sd.setT< type1_t >( "char[16]", val1 );
+    sd.setT< type2_t >( "DataRef", val2 );
 
-    auto &ref0( sd.get< type0_t >( "int32_t" ) );
-    auto &ref1( sd.get< type1_t >( "char[16]" ) );
-    auto &ref2( sd.get< type2_t >( "DataRef" ) );
+    auto &ref0( sd.getT< type0_t >( "int32_t" ) );
+    auto &ref1( sd.getT< type1_t >( "char[16]" ) );
+    auto &ref2( sd.getT< type2_t >( "DataRef" ) );
     auto &ref20( ref2.get< type0_t >() );
 
     if( typeid( val0 ) != typeid( ref0 ) ||

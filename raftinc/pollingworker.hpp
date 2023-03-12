@@ -96,7 +96,6 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         auto *functor(
                 (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
         auto &fifos( fifos_out[ name ] );
-        std::cout << id << " push(" << std::hex << (uint64_t)fifos[ 0 ] << std::dec << ")\n";
         functor->push( fifos[ fifos_out_idx [ name ] ], item );
         fifos_out_idx[ name ] = ( fifos_out_idx[ name ] + 1 ) % fifos.size();
     }
