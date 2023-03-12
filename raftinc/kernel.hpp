@@ -43,7 +43,6 @@
 namespace raft {
 
 class StreamingData;
-class Kernel;
 
 class Kernel
 {
@@ -193,6 +192,13 @@ public:
         return( *ptr );
     }
 
+
+    Kernel& operator * ( const int factor )
+    {
+        (this)->clone_factor = factor;
+        return( *this );
+    }
+
     /**
      * PORTS - input and output, use these to specify the connections
      * with other kernels.
@@ -259,6 +265,16 @@ public:
     void setGroup( int g )
     {
         group_id = g;
+    }
+
+    void setCloneFactor( int factor )
+    {
+        clone_factor = factor;
+    }
+
+    int getCloneFactor() const
+    {
+        return clone_factor;
     }
 
     const PortInfo &getInput( const port_name_t &name )
@@ -435,6 +451,9 @@ private:
     const std::size_t kernel_id;
 
     int group_id; /* for the result from partition */
+
+    int clone_factor = 1;
+    /* a hint from programmer about how many polling workers for this kernel */
 
 }; /** end Kernel decl **/
 

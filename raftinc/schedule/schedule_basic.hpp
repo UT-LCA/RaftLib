@@ -161,18 +161,11 @@ public:
 
     virtual void prepare( Task* task )
     {
-        while( ! Singleton::allocate()->isReady() )
-        {
-            raft::yield();
-        }
-        // this scheduler assume 1 pollingworker per kernel
-        // so we just take the per-port FIFO as the task FIFO
-        copy_port_fifos( task );
     }
 
     virtual void postexit( Task* task )
     {
-        invalidate_output_ports( task->kernel );
+        Singleton::allocate()->invalidateOutputs( task );
         task->sched_meta->finished = true;
     }
 
@@ -180,34 +173,47 @@ protected:
 
     virtual void start_polling_worker( Kernel * const kernel )
     {
-        /**
-         * TODO: lets add the affinity dynamically here
-         */
-        //auto * const th_info( new task_data_t( kernel ) );
-        //th_info->data.loc = kernel->getCoreAssignment();
-
-        /**
-         * thread function takes a reference back to the scheduler
-         * accessible done boolean flag, essentially when the
-         * kernel is done, it can be rescheduled...and this
-         * handles that.
-         */
-        PollingWorker *task = new PollingWorker();
-        task->kernel = kernel;
-        task->id = kernel->getId();
-        task->type = POLLING_WORKER;
+        const int nclones =
+            ( kernel->getCloneFactor() > 1 ) ? kernel->getCloneFactor() : 1;
 
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
         }
-        task_id = ( task_id <= task->id ) ? ( task->id + 1 ) : task_id;
-        auto *tmeta( new StdThreadSchedMeta( task ) );
-        /* insert into tasks linked list */
-        tmeta->next = tasks->next;
-        tasks->next = tmeta;
-        /** we got here, unlock **/
+        std::size_t worker_id = task_id;
+        task_id += nclones; /* reserve that many task ids */
         tasks_mutex.unlock();
+        for( int i( 0 ); nclones > i; ++i )
+        {
+            /**
+             * thread function takes a reference back to the scheduler
+             * accessible done boolean flag, essentially when the
+             * kernel is done, it can be rescheduled...and this
+             * handles that.
+             */
+            PollingWorker *task = new PollingWorker();
+            task->kernel = kernel;
+            task->type = POLLING_WORKER;
+            task->id = worker_id + i;
+            task->clone_id = i;
+
+            // this scheduler assume 1 pollingworker per kernel
+            // so we just take the per-port FIFO as the task FIFO
+            //assert( Singleton::allocate()->isReady() );
+            Singleton::allocate()->taskAllocate( task );
+
+            auto *tmeta( new StdThreadSchedMeta( task ) );
+
+            while( ! tasks_mutex.try_lock() )
+            {
+                raft::yield();
+            }
+            /* insert into tasks linked list */
+            tmeta->next = tasks->next;
+            tasks->next = tmeta;
+            /** we got here, unlock **/
+            tasks_mutex.unlock();
+        }
 
         return;
     }
@@ -215,37 +221,6 @@ protected:
     static inline FIFO* get_FIFO( PortInfo &pi )
     {
         return pi.runtime_info.fifo;
-    }
-
-    static inline void copy_port_fifos( Task *task )
-    {
-        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
-        auto *kernel( worker->kernel );
-        auto &input_ports( kernel->input );
-        for( auto &[ name, info ] : input_ports )
-        {
-            worker->fifos_in.insert(
-                    std::make_pair( name, get_FIFO( info ) ) );
-            worker->names_in.push_back( name );
-        }
-        auto &output_ports( kernel->output );
-        for( auto &[ name, info ] : output_ports )
-        {
-            worker->fifos_out.insert(
-                    std::make_pair( name, get_FIFO( info ) ) );
-            worker->names_out.push_back( name );
-        }
-    }
-
-
-    static void invalidate_output_ports( Kernel *kernel )
-    {
-        auto &output_ports( kernel->output );
-        for( auto &[ name, info ] : output_ports )
-        {
-            get_FIFO( info )->invalidate();
-        }
-        return;
     }
 
     /**

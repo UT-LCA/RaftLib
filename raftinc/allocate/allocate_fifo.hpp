@@ -32,6 +32,7 @@
 #include "kernel.hpp"
 #include "port_info.hpp"
 #include "exceptions.hpp"
+#include "pollingworker.hpp"
 #include "oneshottask.hpp"
 #include "allocate/allocate.hpp"
 #include "allocate/fifo.hpp"
@@ -76,9 +77,15 @@ public:
      */
     virtual ~AllocateFIFO()
     {
-        for( auto *p : allocated_fifo )
+        for( auto &p : port_fifo )
         {
-            delete( p );
+            for( auto *fifo : *p.second )
+            {
+                delete( fifo );
+            }
+            /* clear the vector to avoid double free because port_fifo
+             * is indexed by both port_info */
+            p.second->clear();
         }
     }
 
@@ -117,11 +124,15 @@ public:
     {
         auto func = [ & ]( PortInfo &a, PortInfo &b, void *data )
         {
-            FIFO *fifo;
+            const int nfifos = std::max( a.my_kernel->getCloneFactor(),
+                                         b.my_kernel->getCloneFactor() );
+            auto *fifos( new std::vector< FIFO* >( nfifos ) );
+            (this)->port_fifo[ &a ] = fifos;
+            (this)->port_fifo[ &b ] = fifos;
             if( nullptr != a.runtime_info.existing_buffer.ptr )
             {
                 /* use existing buffer from a */
-                fifo = get_FIFOFunctor(
+                fifos->at( 0 ) = get_FIFOFunctor(
                         a )->make_new_fifo(
                             a.runtime_info.existing_buffer.nitems,
                             a.runtime_info.existing_buffer.start_index,
@@ -129,13 +140,16 @@ public:
             }
             else
             {
-                fifo =
-                    get_FIFOFunctor( a )->make_new_fifo( INITIAL_ALLOC_SIZE,
-                                                         ALLOC_ALIGN_WIDTH,
-                                                         nullptr );
+                for( int i( 0 ); nfifos > i; ++i )
+                {
+                    fifos->at( i ) =
+                        get_FIFOFunctor( a )->make_new_fifo(
+                                INITIAL_ALLOC_SIZE,
+                                ALLOC_ALIGN_WIDTH,
+                                nullptr );
+                }
             }
-            a.runtime_info.fifo = b.runtime_info.fifo = fifo;
-            (this)->allocated_fifo.insert( fifo );
+            a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
         };
 
         GraphTools::BFS( (this)->source_kernels, func );
@@ -151,7 +165,8 @@ public:
 
     virtual bool dataInReady( Task *task, const port_name_t &name )
     {
-        return kernel_has_input_data( task->kernel );
+        return task_has_input_data( task );
+        //return kernel_has_input_data( task->kernel );
     }
 
     virtual bool bufOutReady( Task *task, const port_name_t &name )
@@ -161,7 +176,7 @@ public:
 
     virtual bool getDataIn( Task *task, const port_name_t &name )
     {
-        return kernel_has_input_data( task->kernel, name );
+        return task_has_input_data( task, name );
     }
 
     virtual bool getBufOut( Task *task, const port_name_t &name )
@@ -179,10 +194,31 @@ public:
         return task_pack_output_buf( task );
     }
 
+    virtual void taskAllocate( Task *task )
+    {
+        if( POLLING_WORKER == task->type )
+        {
+            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            polling_worker_allocate( t );
+        }
+        //TODO: design for oneshot task
+    }
+
     virtual void commit( Task *task )
     {
         task_commit( task );
     }
+
+    virtual void invalidateOutputs( Task *task )
+    {
+        if( POLLING_WORKER == task->type )
+        {
+            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            polling_worker_invalidate_outputs( t );
+        }
+        //TODO: design for oneshot task
+    }
+
 
 protected:
 
@@ -194,18 +230,6 @@ protected:
     static inline FIFOFunctor* get_FIFOFunctor( const PortInfo &pi )
     {
         return pi.runtime_info.fifo_functor;
-    }
-
-
-    static void invalidate_output_ports( Kernel *kernel )
-    {
-        auto &output_ports( kernel->output );
-        for( auto &[ name, info ] : output_ports )
-        {
-            //get_FIFOFunctor( info )->invalidate( get_FIFO( info ) );
-            get_FIFO( info )->invalidate();
-        }
-        return;
     }
 
 
@@ -283,6 +307,44 @@ protected:
             }
         }
         /** we should have returned before here, keep compiler happy **/
+        return( false );
+    }
+
+    /**
+     * task_has_input_data - check each input fifos for available
+     * data, returns true if any of the input fifos has available
+     * data.
+     * @param kernel - raft::Task*
+     * @param name - raft::port_name_t &
+     * @return bool  - true if input data available.
+     */
+    bool task_has_input_data( Task *task,
+                              const port_name_t &name = null_port_value )
+    {
+        auto &port_list( task->kernel->input );
+        if( 0 == port_list.size() )
+        {
+           /** only output ports, keep calling till exits **/
+           return( true );
+        }
+
+        assert( POLLING_WORKER == task->type );
+        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+        if( null_port_value != name )
+        {
+            auto &fifos( worker->fifos_in[ name ] );
+            const int nfifos( fifos.size() );
+            const int idx( worker->fifos_in_idx[ name ] );
+            for( int i( 0 ); nfifos > i; ++i )
+            {
+                const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
+                if( size > 0 )
+                {
+                    worker->fifos_in_idx[ name ] = ( idx + i ) % nfifos;
+                    return true;
+                }
+            }
+        }
         return( false );
     }
 
@@ -409,6 +471,62 @@ protected:
     }
 
     /**
+     * copy_port_fifos - copy the fifo allocated for the ports as the
+     * fifo for the task.
+     * @param task - raft::Task*
+     * @return StreamingData.
+     */
+    static inline void copy_port_fifos( PollingWorker *worker )
+    {
+        //auto *kernel( worker->kernel );
+        //auto &input_ports( kernel->input );
+        //for( auto &[ name, info ] : input_ports )
+        //{
+        //    worker->fifos_in.insert(
+        //            std::make_pair( name, get_FIFO( info ) ) );
+        //    worker->names_in.push_back( name );
+        //}
+        //auto &output_ports( kernel->output );
+        //for( auto &[ name, info ] : output_ports )
+        //{
+        //    worker->fifos_out.insert(
+        //            std::make_pair( name, get_FIFO( info ) ) );
+        //    worker->names_out.push_back( name );
+        //}
+    }
+
+    inline void polling_worker_allocate( PollingWorker *worker )
+    {
+        auto *kernel( worker->kernel );
+        auto nclones( kernel->getCloneFactor() );
+
+        auto &input_ports( kernel->input );
+        for( auto &[ name, info ] : input_ports )
+        {
+            const auto nfifos( port_fifo[ &info ]->size() );
+            for( int i( worker->clone_id ); nfifos > i; i += nclones )
+            {
+                worker->fifos_in[ name ].push_back(
+                        port_fifo[ &info ]->at( i ) );
+            }
+            worker->fifos_in_idx[ name ] = 0;
+            worker->names_in.push_back( name );
+        }
+        auto &output_ports( kernel->output );
+        for( auto &[ name, info ] : output_ports )
+        {
+            const auto nfifos( port_fifo[ &info ]->size() );
+            for( int i( worker->clone_id ); nfifos > i; i += nclones )
+            {
+                worker->fifos_out[ name ].push_back(
+                        port_fifo[ &info ]->at( i ) );
+            }
+            worker->fifos_out_idx[ name ] = 0;
+            worker->names_out.push_back( name );
+        }
+    }
+
+    /**
      * kernel_commit - commit the data involved by the kernel compute().
      * @param kernel - raft::Kernel*
      * @return StreamingData.
@@ -466,6 +584,22 @@ protected:
 
     }
 
+    /**
+     * polling_worker_invalidate_outputs - invalidates all the output fifos
+     * of a polling worker.
+     * @param task - raft::PollingWorker*
+     */
+    static void polling_worker_invalidate_outputs( PollingWorker *worker )
+    {
+        for( auto &name : worker->names_out )
+        {
+            for( FIFO *fifo : worker->fifos_out[ name ] )
+            {
+                fifo->invalidate();
+            }
+        }
+    }
+
     /** both convenience structs, hold exactly what the names say **/
     kernelset_t &kernels;
     kernelset_t &source_kernels;
@@ -473,7 +607,7 @@ protected:
     /**
      * keeps a list of all currently allocated FIFO objects
      */
-    std::unordered_set< FIFO* > allocated_fifo;
+    std::unordered_map< PortInfo*, std::vector< FIFO* >* > port_fifo;
 
     volatile bool exited = false;
     volatile bool ready = false;

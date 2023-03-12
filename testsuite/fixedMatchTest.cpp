@@ -23,7 +23,7 @@ main()
     search find( term );
     auto we( raft::write_each< raft::match_t >( 
             std::back_inserter( matches ) ) );  
-    dag += read >> find >> we;
+    dag += read >> find * 3 >> we;
     /** dag.exe() is an implicit barrier for completion of execution **/
     dag.exe< raft::RuntimeFIFO >();
     if( matches.size() != 174 /** count from grep **/ )

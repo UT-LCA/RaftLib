@@ -36,10 +36,14 @@ namespace raft
 
 struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 {
-    std::unordered_map< port_name_t, FIFO* > fifos_in;
-    std::unordered_map< port_name_t, FIFO* > fifos_out;
+    std::unordered_map< port_name_t, std::vector< FIFO* > > fifos_in;
+    std::unordered_map< port_name_t, std::vector< FIFO* > > fifos_out;
+    std::unordered_map< port_name_t, int > fifos_in_idx;
+    std::unordered_map< port_name_t, int > fifos_out_idx;
     std::vector< port_name_t > names_in;
     std::vector< port_name_t > names_out;
+    /* the index when there are multiple polling worker clones for a kernel */
+    int clone_id;
 
     kstatus::value_t exe()
     {
@@ -65,48 +69,53 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
     {
         auto *functor(
                 (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_in[ name ] );
-        functor->pop( fifo, item );
+        auto &fifos( fifos_in[ name ] );
+        functor->pop( fifos[ fifos_in_idx[ name ] ], item );
+        fifos_in_idx[ name ] = ( fifos_in_idx[ name ] + 1 ) % fifos.size();
     }
 
     virtual DataRef peek( const port_name_t &name )
     {
         auto *functor(
                 (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_in[ name ] );
-        return functor->peek( fifo );
+        auto &fifos( fifos_in[ name ] );
+        return functor->peek( fifos[ fifos_in_idx[ name ] ] );
     }
 
     virtual void recycle( const port_name_t &name )
     {
         auto *functor(
                 (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_in[ name ] );
-        functor->recycle( fifo );
+        auto &fifos( fifos_in[ name ] );
+        functor->recycle( fifos[ fifos_in_idx[ name ] ] );
+        fifos_in_idx[ name ] = ( fifos_in_idx[ name ] + 1 ) % fifos.size();
     }
 
     virtual void push( const port_name_t &name, DataRef &item )
     {
         auto *functor(
                 (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_out[ name ] );
-        functor->push( fifo, item );
+        auto &fifos( fifos_out[ name ] );
+        std::cout << id << " push(" << std::hex << (uint64_t)fifos[ 0 ] << std::dec << ")\n";
+        functor->push( fifos[ fifos_out_idx [ name ] ], item );
+        fifos_out_idx[ name ] = ( fifos_out_idx[ name ] + 1 ) % fifos.size();
     }
 
     virtual DataRef allocate( const port_name_t &name )
     {
         auto *functor(
                 (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_out[ name ] );
-        return functor->allocate( fifo );
+        auto &fifos( fifos_out[ name ] );
+        return functor->allocate( fifos[ fifos_out_idx[ name ] ] );
     }
 
     virtual void send( const port_name_t &name )
     {
         auto *functor(
                 (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto *fifo( fifos_out[ name ] );
-        functor->send( fifo );
+        auto &fifos( fifos_out[ name ] );
+        functor->send( fifos[ fifos_out_idx[ name ] ] );
+        fifos_out_idx[ name ] = ( fifos_out_idx[ name ] + 1 ) % fifos.size();
     }
 
     virtual std::vector< port_name_t > &getNamesIn()
