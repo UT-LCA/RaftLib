@@ -57,7 +57,6 @@ public:
         sink_kernels( dag.getSinkKernels() ),
         alloc( the_alloc )
     {
-        handlers.addHandler( signal::quit, quitHandler );
     }
     virtual ~ScheduleBasic() = default;
 
@@ -122,8 +121,8 @@ public:
 
     virtual bool shouldExit( Task* task )
     {
-        if( kernel_has_no_input_ports( task->kernel ) &&
-            ! kernel_has_input_data( task->kernel ) )
+        if( ! Singleton::allocate()->taskHasInputPorts( task ) &&
+            ! Singleton::allocate()->getDataIn( task, null_port_value ) )
         {
             return true;
         }
@@ -165,6 +164,7 @@ public:
 
     virtual void postexit( Task* task )
     {
+        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
         Singleton::allocate()->invalidateOutputs( task );
         task->sched_meta->finished = true;
     }
@@ -217,179 +217,6 @@ protected:
 
         return;
     }
-
-    static inline FIFO* get_FIFO( PortInfo &pi )
-    {
-        return pi.runtime_info.fifo;
-    }
-
-    /**
-     * kernelHasInputData - check each input port for available
-     * data, returns true if any of the input ports has available
-     * data.
-     * @param kernel - raft::kernel
-     * @return bool  - true if input data available.
-     */
-    static bool kernel_has_input_data( Kernel *kernel )
-    {
-        auto &port_list( kernel->input );
-        if( 0 == port_list.size() )
-        {
-           /** only output ports, keep calling till exits **/
-           return( true );
-        }
-        /**
-         * NOTE: this was added as a reqeuest, need to update wiki,
-         * the first hit to this one will take an extra few cycles
-         * to process the jmp, however, after that, the branch
-         * taken is incredibly easy and we should be able to do
-         * this as if the switch statement wasn't there at all.
-         * - an alternative to using the kernel variable would
-         * be to implement a new subclass of kernel...that's doable
-         * too but we'd have to make dependent template functions
-         * that would use the type info to select the right behavior
-         * which we're doing dynamically below in the switch statement.
-         */
-        switch( kernel->sched_trigger )
-        {
-            case( trigger::any_port ):
-            {
-                for( auto &[ name, info ] : port_list )
-                {
-                   const auto size( get_FIFO( info )->size() );
-                   if( size > 0 )
-                   {
-                      return( true );
-                   }
-                }
-            }
-            break;
-            case( trigger::all_port ):
-            {
-                for( auto &[ name, info ] : port_list )
-                {
-                   const auto size( get_FIFO( info )->size() );
-                   /** no data avail on this port, return false **/
-                   if( size == 0 )
-                   {
-                      return( false );
-                   }
-                }
-                /** all ports have data, return true **/
-                return( true );
-            }
-            break;
-            default:
-            {
-                //TODO add exception class here
-                std::cerr << "invalid scheduling behavior set, exiting!\n";
-                exit( EXIT_FAILURE );
-            }
-        }
-        /** we should have returned before here, keep compiler happy **/
-        return( false );
-    }
-
-    /**
-     * kernelHasNoInputPorts - pretty much exactly like the
-     * function name says, if the param kernel has no valid
-     * input ports (this function assumes that kernelHasInputData()
-     * has been called and returns false before this function
-     * is called) then it returns true.
-     * @params   kernel - raft::kernel*
-     * @return  bool   - true if no valid input ports avail
-     */
-    static bool kernel_has_no_input_ports( Kernel *kernel )
-    {
-        auto &port_list( kernel->input );
-        /** assume data check is already complete **/
-        for( auto &[ name, info ] : port_list )
-        {
-            if( ! get_FIFO( info )->is_invalid() )
-            {
-                return( false );
-            }
-        }
-        return( true );
-    }
-
-    /**
-     * checkSystemSignal - check the incomming streams for
-     * the param kernel for any system signals, if there
-     * is one then consume the signal and perform the
-     * appropriate action.
-     * @param kernel - raft::kernel::value_t
-     * @param data   - void*, use this if any further info
-     *  is needed in future implementations of handlers
-     * @return  raft::kstatus, proceed unless a stop signal is received
-     */
-    static kstatus::value_t checkSystemSignal( Kernel * const kernel,
-                                               void *data,
-                                               SignalHandler &handlers )
-    {
-        auto &input_ports( kernel->input );
-        kstatus::value_t ret_signal( kstatus::proceed );
-        for( auto &[ name, info ] : input_ports )
-        {
-            if( get_FIFO( info )->size() == 0 )
-            {
-                continue;
-            }
-            const auto curr_signal( get_FIFO( info )->signal_peek() );
-            if( R_UNLIKELY(
-                ( curr_signal > 0 &&
-                  curr_signal < signal::MAX_SYSTEM_SIGNAL ) ) )
-            {
-                get_FIFO( info )->signal_pop();
-                /**
-                 * TODO, right now there is special behavior for term signal
-                 * only, what should we do with others?  Need to decide that.
-                 */
-
-                if( handlers.callHandler( curr_signal,
-                                          *get_FIFO( info ),
-                                          kernel,
-                                          data ) == kstatus::stop )
-                {
-                    ret_signal = kstatus::stop;
-                }
-            }
-        }
-        return( ret_signal );
-    }
-
-    /**
-     * quiteHandler - performs the actions needed when
-     * a port sends a quite signal (normal termination),
-     * this is most likely due to the end of data.
-     * @param fifo - FIFO& that sent the signal
-     * @param kernel - raft::kernel*
-     * @param signal - raft::signal
-     * @param data   - void*, vain attempt to future proof
-     */
-    static kstatus::value_t quitHandler( FIFO &fifo,
-                                         Kernel *kernel,
-                                         const signal::value_t signal,
-                                         void *data )
-    {
-        /**
-         * NOTE: This should be the only action needed
-         * currently, however that may change in the future
-         * with more features and systems added.
-         */
-        UNUSED( kernel );
-        UNUSED( signal );
-        UNUSED( data );
-
-        fifo.invalidate();
-        return( kstatus::stop );
-    }
-
-
-    /**
-     * signal handlers
-     */
-    SignalHandler handlers;
 
     /** kernel set **/
     kernelkeeper kernels;

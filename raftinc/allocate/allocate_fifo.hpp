@@ -219,6 +219,16 @@ public:
         //TODO: design for oneshot task
     }
 
+    virtual bool taskHasInputPorts( Task *task )
+    {
+        if( POLLING_WORKER == task->type )
+        {
+            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            polling_worker_has_input_ports( t );
+        }
+        //TODO: design for oneshot task
+    }
+
 
 protected:
 
@@ -344,7 +354,25 @@ protected:
                     return true;
                 }
             }
+            return false;
         }
+
+        for( auto &name : worker->names_in )
+        {
+            auto &fifos( worker->fifos_in[ name ] );
+            const int nfifos( fifos.size() );
+            const int idx( worker->fifos_in_idx[ name ] );
+            for( int i( 0 ); nfifos > i; ++i )
+            {
+                const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
+                if( size > 0 )
+                {
+                    worker->fifos_in_idx[ name ] = ( idx + i ) % nfifos;
+                    return true;
+                }
+            }
+        }
+
         return( false );
     }
 
@@ -598,6 +626,33 @@ protected:
                 fifo->invalidate();
             }
         }
+    }
+
+    /**
+     * polling_worker_has_input_ports - if the polling worker has no valid
+     * input ports then it returns false.
+     * @params   worker - raft::PollingWorker*
+     * @return  bool   - false if no valid input ports avail
+     */
+    static bool polling_worker_has_input_ports( PollingWorker *worker )
+    {
+        if( 0 == worker->kernel->input.size() )
+        {
+            /* let the source polling worker loop until the stop signal */
+            return true;
+        }
+
+        for( auto &name : worker->names_in )
+        {
+            for( FIFO *fifo : worker->fifos_in[ name ] )
+            {
+                if( ! fifo->is_invalid() )
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** both convenience structs, hold exactly what the names say **/

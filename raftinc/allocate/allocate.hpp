@@ -70,6 +70,7 @@ public:
     virtual void taskAllocate( Task *task ) = 0;
     virtual void commit( Task *task ) = 0;
     virtual void invalidateOutputs( Task *task ) = 0;
+    virtual bool taskHasInputPorts( Task *task ) = 0;
 
 }; /** end Allocate decl **/
 
