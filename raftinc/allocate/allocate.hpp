@@ -67,10 +67,16 @@ public:
     virtual StreamingData &getDataIn( Task *task ) = 0;
     virtual StreamingData &getBufOut( Task *task ) = 0;
 
-    virtual void taskAllocate( Task *task ) = 0;
+    virtual void taskInit( Task *task ) = 0;
     virtual void commit( Task *task ) = 0;
     virtual void invalidateOutputs( Task *task ) = 0;
     virtual bool taskHasInputPorts( Task *task ) = 0;
+
+    virtual void taskPush( Task *task,
+                           const port_name_t &name,
+                           DataRef &item ) = 0;
+    virtual DataRef taskAllocate( Task *task, const port_name_t &name ) = 0;
+    virtual void taskSend( Task *task, const port_name_t &name ) = 0;
 
 }; /** end Allocate decl **/
 

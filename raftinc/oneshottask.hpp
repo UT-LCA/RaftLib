@@ -35,6 +35,7 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 {
     StreamingData *stream_in;
     StreamingData *stream_out;
+    std::vector< port_name_t > *names_out = nullptr;
 
     kstatus::value_t exe()
     {
@@ -66,20 +67,17 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
         // do nothing, because we have dedicated the data for this task already
     }
 
-    virtual void push( const port_name_t &name, DataRef &item )
+    virtual std::vector< port_name_t > &getNamesOut()
     {
-        // FIXME: multiple pushes in one exe() that exhausts buffer?
-    }
-
-    virtual DataRef allocate( const port_name_t &name )
-    {
-        // FIXME: multiple pushes in one exe() that exhausts buffer?
-        return DataRef();
-    }
-
-    virtual void send( const port_name_t &name )
-    {
-        // FIXME: multiple pushes in one exe() that exhausts buffer?
+        if( nullptr == names_out )
+        {
+            names_out = new std::vector< port_name_t >();
+            for( auto &[ name, ref ] : *stream_out )
+            {
+                names_out->push_back( name );
+            }
+        }
+        return *names_out;
     }
 };
 

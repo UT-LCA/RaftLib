@@ -194,14 +194,18 @@ public:
         return task_pack_output_buf( task );
     }
 
-    virtual void taskAllocate( Task *task )
+    virtual void taskInit( Task *task )
     {
         if( POLLING_WORKER == task->type )
         {
             auto *t( reinterpret_cast< PollingWorker* >( task ) );
-            polling_worker_allocate( t );
+            polling_worker_init( t );
         }
-        //TODO: design for oneshot task
+        else if( ONE_SHOT == task->type )
+        {
+            auto *t( reinterpret_cast< OneShotTask* >( task ) );
+            oneshot_init( t );
+        }
     }
 
     virtual void commit( Task *task )
@@ -229,6 +233,65 @@ public:
         //TODO: design for oneshot task
     }
 
+    virtual void taskPush( Task *task, const port_name_t &name, DataRef &item )
+    {
+        auto *functor(
+                task->kernel->getOutput( name ).runtime_info.fifo_functor );
+        FIFO *fifo;
+        if( POLLING_WORKER == task->type )
+        {
+            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto &fifos( worker->fifos_out[ name ] );
+            fifo = fifos[ worker->fifos_out_idx[ name ] ];
+            worker->fifos_out_idx[ name ] =
+                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
+        }
+        else /* if( ONE_SHOT == task->type ) */
+        {
+            // FIXME: multiple pushes in one exe() that exhausts buffer?
+        }
+        functor->push( fifo, item );
+    }
+
+    virtual DataRef taskAllocate( Task *task, const port_name_t &name )
+    {
+        auto *functor(
+                task->kernel->getOutput( name ).runtime_info.fifo_functor );
+        FIFO *fifo;
+        if( POLLING_WORKER == task->type )
+        {
+            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto &fifos( worker->fifos_out[ name ] );
+            fifo = fifos[ worker->fifos_out_idx[ name ] ];
+            worker->fifos_out_idx[ name ] =
+                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
+        }
+        else /* if( ONE_SHOT == task->type ) */
+        {
+            // FIXME: multiple pushes in one exe() that exhausts buffer?
+        }
+        return functor->allocate( fifo );
+    }
+
+    virtual void taskSend( Task *task, const port_name_t &name )
+    {
+        auto *functor(
+                task->kernel->getOutput( name ).runtime_info.fifo_functor );
+        FIFO *fifo;
+        if( POLLING_WORKER == task->type )
+        {
+            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto &fifos( worker->fifos_out[ name ] );
+            fifo = fifos[ worker->fifos_out_idx[ name ] ];
+            worker->fifos_out_idx[ name ] =
+                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
+        }
+        else /* if( ONE_SHOT == task->type ) */
+        {
+            // FIXME: multiple pushes in one exe() that exhausts buffer?
+        }
+        functor->send( fifo );
+    }
 
 protected:
 
@@ -523,7 +586,7 @@ protected:
         //}
     }
 
-    inline void polling_worker_allocate( PollingWorker *worker )
+    inline void polling_worker_init( PollingWorker *worker )
     {
         auto *kernel( worker->kernel );
         auto nclones( kernel->getCloneFactor() );
@@ -551,6 +614,19 @@ protected:
             }
             worker->fifos_out_idx[ name ] = 0;
             worker->names_out.push_back( name );
+        }
+    }
+
+    static inline void oneshot_init( OneShotTask *oneshot )
+    {
+        oneshot->stream_out = new StreamingData();
+        auto &output_ports( oneshot->kernel->output );
+
+        for( auto &[ name, info ] : output_ports )
+        {
+            oneshot->stream_out->set(
+                    name, get_FIFOFunctor( info )->oneshot_allocate() );
+            /* TODO: needs to find a place to release the malloced data */
         }
     }
 
@@ -589,26 +665,7 @@ protected:
             return;
         }
 
-        auto *oneshot_t( reinterpret_cast< OneShotTask* >( task ) );
-        auto *buf( oneshot_t->stream_out );
         //TODO: what is the logic to cleanup oneshot task buffer and data?
-        auto *kernel( task->kernel );
-        auto &output_list( kernel->output );
-
-        for( auto &[ name, info ] : output_list )
-        {
-            if( buf->has( name ) )
-            {
-                get_FIFOFunctor( info )->send( get_FIFO( info ) );
-            }
-        }
-
-        auto &input_list( kernel->input );
-
-        for( auto &[ name, info ] : input_list )
-        {
-            get_FIFOFunctor( info )->recycle( get_FIFO( info ) );
-        }
 
     }
 

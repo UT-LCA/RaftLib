@@ -154,7 +154,7 @@ protected:
         tasks_mutex.unlock();
 
         /* allocate the output buffer */
-        task->stream_out = &Singleton::allocate()->getBufOut( task );
+        Singleton::allocate()->taskInit( task );
 
         auto *tmeta( new OneShotStdSchedMeta( task, true ) );
         while( ! tasks_mutex.try_lock() )
@@ -214,7 +214,7 @@ protected:
         /* TODO: inform allocate to move the output of task to tnext */
         tnext->stream_in = new StreamingData();
         tnext->stream_in->set( dst_name, oneshot->stream_out->get( src_name ) );
-        tnext->stream_out = &Singleton::allocate()->getBufOut( tnext );
+        Singleton::allocate()->taskInit( tnext );
 
         while( ! tasks_mutex.try_lock() )
         {

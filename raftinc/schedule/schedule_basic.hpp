@@ -200,7 +200,7 @@ protected:
             // this scheduler assume 1 pollingworker per kernel
             // so we just take the per-port FIFO as the task FIFO
             //assert( Singleton::allocate()->isReady() );
-            Singleton::allocate()->taskAllocate( task );
+            Singleton::allocate()->taskInit( task );
 
             auto *tmeta( new StdThreadSchedMeta( task ) );
 

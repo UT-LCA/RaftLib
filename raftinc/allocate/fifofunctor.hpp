@@ -64,6 +64,8 @@ public:
 
     virtual DataRef allocate( FIFO *fifo ) = 0;
 
+    virtual DataRef oneshot_allocate() = 0;
+
     virtual void deallocate( FIFO *fifo )
     {
         fifo->deallocate();
@@ -293,6 +295,15 @@ public:
         return ref;
     }
 
+    virtual DataRef oneshot_allocate()
+    {
+        DataRef ref;
+        /* TODO: use constructor for class type */
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        ref.set< T >( *ptr );
+        return ref;
+    }
+
     //TODO: find a way to create a proper functor interface for autorelease
     //virtual FIFO::autorelease< DataRef, FIFO::allocatetype > allocate_s(
     //        FIFO *fifo )
@@ -323,6 +334,7 @@ public:
     virtual void pop( FIFO *fifo, DataRef item,
                       signal::value_t *signal = nullptr )
     {
+        //assert( nullptr != &item.get< T >() );
         fifo->pop< T >( item.get< T >(), signal );
     }
 

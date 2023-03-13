@@ -65,6 +65,21 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
     {
         return Singleton::allocate()->getBufOut( this );
     }
+
+    virtual void push( const port_name_t &name, DataRef &item )
+    {
+        Singleton::allocate()->taskPush( this, name, item );
+    }
+
+    virtual DataRef allocate( const port_name_t &name )
+    {
+        return Singleton::allocate()->taskAllocate( this, name );
+    }
+
+    virtual void send( const port_name_t &name )
+    {
+        Singleton::allocate()->taskSend( this, name );
+    }
 };
 
 } /** end namespace raft */

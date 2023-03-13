@@ -91,32 +91,6 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         fifos_in_idx[ name ] = ( fifos_in_idx[ name ] + 1 ) % fifos.size();
     }
 
-    virtual void push( const port_name_t &name, DataRef &item )
-    {
-        auto *functor(
-                (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_out[ name ] );
-        functor->push( fifos[ fifos_out_idx [ name ] ], item );
-        fifos_out_idx[ name ] = ( fifos_out_idx[ name ] + 1 ) % fifos.size();
-    }
-
-    virtual DataRef allocate( const port_name_t &name )
-    {
-        auto *functor(
-                (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_out[ name ] );
-        return functor->allocate( fifos[ fifos_out_idx[ name ] ] );
-    }
-
-    virtual void send( const port_name_t &name )
-    {
-        auto *functor(
-                (this)->kernel->getOutput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_out[ name ] );
-        functor->send( fifos[ fifos_out_idx[ name ] ] );
-        fifos_out_idx[ name ] = ( fifos_out_idx[ name ] + 1 ) % fifos.size();
-    }
-
     virtual std::vector< port_name_t > &getNamesIn()
     {
         return names_in;
