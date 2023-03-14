@@ -22,10 +22,11 @@
 #define RAFTDATABASE_TCC  1
 
 #include <cstddef>
-#include "blocked.hpp"
-#include "threadaccess.hpp"
-#include "pointer.hpp"
-#include "signal.hpp"
+
+#include "raftinc/allocate/buffer/blocked.hpp"
+#include "raftinc/allocate/buffer/threadaccess.hpp"
+#include "raftinc/allocate/buffer/pointer.hpp"
+#include "raftinc/allocate/buffer/signal.hpp"
 
 namespace Buffer
 {

@@ -24,11 +24,11 @@
 #include <cassert>
 #include <sstream>
 
-#include "defs.hpp"
-#include "kpair.hpp"
-#include "kernel.hpp"
-#include "exceptions.hpp"
-#include "makedot.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kpair.hpp"
+#include "raftinc/kernel.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/makedot.hpp"
 
 namespace raft
 {

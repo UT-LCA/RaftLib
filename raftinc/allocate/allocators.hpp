@@ -23,7 +23,7 @@
 /**
  * simply a list of the current allocators...
  */
-#include "allocate/allocate.hpp"
-#include "allocate/allocate_fifo.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/allocate/allocate_fifo.hpp"
 
 #endif /* END RAFT_ALLOCATE_ALLOCATORS_HPP */

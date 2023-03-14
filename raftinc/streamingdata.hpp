@@ -23,9 +23,9 @@
 
 #include <string>
 #include <sstream>
-#include "exceptions.hpp"
-#include "task.hpp"
-#include "defs.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/defs.hpp"
 
 namespace raft {
 

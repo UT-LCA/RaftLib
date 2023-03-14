@@ -22,13 +22,13 @@
 #ifndef RAFT_ALLOCATE_RINGBUFFER_COMMONBASE_TCC
 #define RAFT_ALLOCATE_RINGBUFFER_COMMONBASE_TCC  1
 
-#include "exceptions.hpp"
-#include "allocate/buffer/inline_traits.tcc"
-#include "allocate/buffer/buffertypes.hpp"
-//#include "prefetch.hpp"
-#include "defs.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/allocate/buffer/inline_traits.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+//#include "raftinc/prefetch.hpp"
+#include "raftinc/defs.hpp"
 /** for yield **/
-#include "sysschedutil.hpp"
+#include "raftinc/sysschedutil.hpp"
 
 namespace raft
 {
@@ -349,7 +349,7 @@ protected:
                                const std::size_t iterator_type )
     {
         using list_iter_t = typename std::list< T >::iterator;
-        using vec_iter_t  = typename std::vector< T >::iterator;
+        //using vec_iter_t  = typename std::vector< T >::iterator;
         using func_t      = std::function<
             void ( void*, void*, const signal::value_t& ) >;
 
@@ -931,8 +931,6 @@ protected:
             }
             auto * const buff_ptr( (this)->datamanager.get() );
             const auto read_index( Buffer::Pointer::val( buff_ptr->read_pt ) );
-            auto * const ptr =
-                reinterpret_cast< T* >( &( buff_ptr->store[ read_index ] ) );
             delete_helper< T, B >::del( buff_ptr, read_index );
             /**
              * TODO, this whole func can be optimized a bit more

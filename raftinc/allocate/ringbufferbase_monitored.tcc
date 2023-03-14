@@ -30,9 +30,9 @@
 #include <thread>
 #include <utility>
 
-#include "buffer/buffertypes.hpp"
-#include "allocate/fifoabstract.tcc"
-#include "allocate/ringbufferbase.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/fifoabstract.tcc"
+#include "raftinc/allocate/ringbufferbase.tcc"
 
 //#include "sample.tcc"
 //#include "meansampletype.tcc"

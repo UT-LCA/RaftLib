@@ -19,17 +19,17 @@
  */
 #ifndef RAFT_SCHEDULE_SCHEDULE_ONESHOT_HPP
 #define RAFT_SCHEDULE_SCHEDULE_ONESHOT_HPP  1
-#include "signalhandler.hpp"
-#include "rafttypes.hpp"
-#include "defs.hpp"
-#include "kernel.hpp"
-#include "kernelkeeper.tcc"
-#include "sysschedutil.hpp"
-#include "dag.hpp"
-#include "task.hpp"
-#include "schedule_basic.hpp"
-#include "allocate/allocate.hpp"
-#include "oneshottask.hpp"
+#include "raftinc/signalhandler.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kernel.hpp"
+#include "raftinc/kernelkeeper.tcc"
+#include "raftinc/sysschedutil.hpp"
+#include "raftinc/dag.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/schedule/schedule_basic.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/oneshottask.hpp"
 
 namespace raft {
 
@@ -174,8 +174,6 @@ protected:
     {
         auto *t( reinterpret_cast< OneShotTask* >( task ) );
         Kernel *mykernel( task->kernel );
-        auto *tmeta( reinterpret_cast< OneShotStdSchedMeta* >(
-                    task->sched_meta ) );
         for( auto &name : t->stream_out->getSent() )
         {
             const auto *other_pi( mykernel->output[ name ].other_port );
@@ -183,7 +181,7 @@ protected:
             shot_kernel( other_pi->my_kernel, other_pi->my_name,
                          t->stream_out->get( name ) );
             DataRef ref;
-            while( ref = Singleton::allocate()->portPop( other_pi ) )
+            while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
             {
                 shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
             }
@@ -192,7 +190,6 @@ protected:
 
     void self_iterate( Task *task )
     {
-        static int cnt = 0;
         auto *tmeta( reinterpret_cast< OneShotStdSchedMeta* >(
                      task->sched_meta ) );
         if( ! tmeta->is_source )

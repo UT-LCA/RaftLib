@@ -20,10 +20,10 @@
  */
 #ifndef RAFT_SCHEDULE_SCHEDULE_HPP
 #define RAFT_SCHEDULE_SCHEDULE_HPP  1
-#include "signalhandler.hpp"
-#include "rafttypes.hpp"
-#include "defs.hpp"
-#include "singleton.hpp"
+#include "raftinc/signalhandler.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/singleton.hpp"
 #include <mutex>
 
 namespace raft {

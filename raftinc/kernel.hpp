@@ -31,13 +31,14 @@
 #ifdef BENCHMARK
 #include <atomic>
 #endif
-#include "exceptions.hpp"
-#include "port_info.hpp"
-#include "rafttypes.hpp"
-#include "common.hpp"
-#include "defs.hpp"
-#include "kpair.hpp"
-#include "task.hpp"
+
+#include "raftinc/exceptions.hpp"
+#include "raftinc/port_info.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/common.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kpair.hpp"
+#include "raftinc/task.hpp"
 
 
 namespace raft {
@@ -231,7 +232,7 @@ public:
              * this will work if this is a string or not, name, returns a 
              * type based on what is in defs.hpp.
              */
-            const auto &port_name( it->first );
+            //const auto &port_name( it->first );
             const auto &port_info( it->second );
             /**
              * NOTE: with respect to the inputs, the 
@@ -253,7 +254,7 @@ public:
     
         for( auto it( output.begin() ); it != output.end(); ++it )
         {
-            const auto &port_name( it->first );
+            //const auto &port_name( it->first );
             const auto &port_info( it->second );
             /**
              * NOTE: with respect to the inputs, the 
@@ -270,6 +271,7 @@ public:
                 throw PortUnconnectedException( ss.str() );
             }
         }
+        return true;
     }
 
     void setGroup( int g )

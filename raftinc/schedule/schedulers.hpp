@@ -23,8 +23,8 @@
 /**
  * simply a list of the current schedulers...
  */
-#include "schedule.hpp"
-#include "schedule_basic.hpp"
-#include "schedule_oneshot.hpp"
+#include "raftinc/schedule/schedule.hpp"
+#include "raftinc/schedule/schedule_basic.hpp"
+#include "raftinc/schedule/schedule_oneshot.hpp"
 
 #endif /* END RAFT_SCHEDULE_SCHEDULERS_HPP */

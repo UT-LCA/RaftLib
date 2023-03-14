@@ -25,9 +25,10 @@
 #include <cassert>
 #include <cinttypes>
 #include <iostream>
-#include "allocate/buffer/pointer.hpp"
-#include "allocate/buffer/signal.hpp"
-#include "allocate/buffer/database.tcc"
+
+#include "raftinc/allocate/buffer/pointer.hpp"
+#include "raftinc/allocate/buffer/signal.hpp"
+#include "raftinc/allocate/buffer/database.tcc"
 
 
 namespace Buffer

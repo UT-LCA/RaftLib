@@ -31,7 +31,7 @@
 #include <cstring>
 #include <mutex>
 
-#include "sysschedutil.hpp"
+#include "raftinc/sysschedutil.hpp"
 
 namespace raft
 {

@@ -23,13 +23,13 @@
 #include <vector>
 #include <unordered_map>
 
-#include "exceptions.hpp"
-#include "defs.hpp"
-#include "rafttypes.hpp"
-#include "task.hpp"
-#include "task_impl.hpp"
-#include "allocate/allocate.hpp"
-#include "schedule/schedule.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/task_impl.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/schedule/schedule.hpp"
 
 namespace raft
 {

@@ -27,7 +27,8 @@
 #include <utility>
 #include <ostream>
 #include <cassert>
-#include "defs.hpp"
+
+#include "raftinc/defs.hpp"
 
 /** type for edge weights when giving to Scotch partitioner **/
 using weight_t  = std::int32_t;

@@ -4,7 +4,7 @@
 #include <type_traits>
 #include <typeinfo>
 
-#include "defs.hpp"
+#include "raftinc/defs.hpp"
 
 #ifndef RAFT_ALLOCATE_BUFFER_INLINE_TRAITS_TCC
 #define RAFT_ALLOCATE_BUFFER_INLINE_TRAITS_TCC 1

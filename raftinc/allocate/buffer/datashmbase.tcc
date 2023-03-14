@@ -29,11 +29,12 @@
 #include <sys/mman.h>
 #include <shm>
 #endif
-#include "allocate/buffer/pointer.hpp"
-#include "allocate/buffer/signal.hpp"
-#include "allocate/buffer/database.tcc"
-#include "allocate/buffer/buffertypes.hpp"
-#include "defs.hpp"
+
+#include "raftinc/allocate/buffer/pointer.hpp"
+#include "raftinc/allocate/buffer/signal.hpp"
+#include "raftinc/allocate/buffer/database.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/defs.hpp"
 
 
 namespace Buffer

@@ -31,13 +31,13 @@
 #include <iostream>
 #include <cstddef>
 
-#include "rafttypes.hpp"
-#include "allocate/buffer/pointer.hpp"
-#include "allocate/buffer/blocked.hpp"
-#include "allocate/buffer/buffertypes.hpp"
-#include "allocate/buffer/inline_traits.tcc"
-#include "allocate/fifoabstract.tcc"
-#include "allocate/datamanager.tcc"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/allocate/buffer/pointer.hpp"
+#include "raftinc/allocate/buffer/blocked.hpp"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/buffer/inline_traits.tcc"
+#include "raftinc/allocate/fifoabstract.tcc"
+#include "raftinc/allocate/datamanager.tcc"
 
 namespace raft
 {
@@ -60,10 +60,10 @@ public:
 } /** end namespace raft **/
 
 /** implementation that uses malloc/jemalloc/tcmalloc **/
-#include "allocate/ringbufferheap.tcc"
+#include "raftinc/allocate/ringbufferheap.tcc"
 /** heap implementation, uses thread shared memory or SHM **/
-#include "allocate/ringbuffershm.tcc"
+#include "raftinc/allocate/ringbuffershm.tcc"
 /** infinite dummy implementation, can use shared memory or SHM **/
-#include "allocate/ringbufferinfinite.tcc"
+#include "raftinc/allocate/ringbufferinfinite.tcc"
 
 #endif /* END RAFT_ALLOCATE_RINGBUFFERBASE_TCC */

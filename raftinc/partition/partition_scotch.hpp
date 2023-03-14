@@ -27,10 +27,11 @@
 #include <cstdint>
 #include <functional>
 #include <thread>
-#include "defs.hpp"
-#include "port_info.hpp"
-#include "partition/partition.hpp"
-#include "partition/graph.tcc"
+
+#include "raftinc/defs.hpp"
+#include "raftinc/port_info.hpp"
+#include "raftinc/partition/partition.hpp"
+#include "raftinc/partition/graph.tcc"
 
 namespace raft
 {

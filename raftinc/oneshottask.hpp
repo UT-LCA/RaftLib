@@ -20,13 +20,13 @@
 #ifndef RAFT_ONESHOTTASK_HPP
 #define RAFT_ONESHOTTASK_HPP  1
 
-#include "exceptions.hpp"
-#include "defs.hpp"
-#include "rafttypes.hpp"
-#include "task.hpp"
-#include "task_impl.hpp"
-#include "allocate/allocate.hpp"
-#include "schedule/schedule.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/task_impl.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/schedule/schedule.hpp"
 
 namespace raft
 {
@@ -72,9 +72,9 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
         if( nullptr == names_out )
         {
             names_out = new std::vector< port_name_t >();
-            for( auto &[ name, ref ] : *stream_out )
+            for( auto &p : *stream_out )
             {
-                names_out->push_back( name );
+                names_out->push_back( p.first );
             }
         }
         return *names_out;

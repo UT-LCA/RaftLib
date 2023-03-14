@@ -27,12 +27,12 @@
 #include <stack>
 #include <vector>
 
-#include "defs.hpp"
-#include "kernel.hpp"
-#include "port_info.hpp"
-#include "common.hpp"
-#include "exceptions.hpp"
-#include "port_info.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kernel.hpp"
+#include "raftinc/port_info.hpp"
+#include "raftinc/common.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/port_info.hpp"
 
 /**
  * edge_func - function to implement if you want to

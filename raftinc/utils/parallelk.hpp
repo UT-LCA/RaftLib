@@ -20,7 +20,8 @@
  */
 #ifndef RAFT_PARALLELK_HPP
 #define RAFT_PARALLELK_HPP  1
-#include "kernel.hpp"
+
+#include "raftinc/kernel.hpp"
 
 namespace raft
 {

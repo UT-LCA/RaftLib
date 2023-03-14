@@ -27,10 +27,10 @@
 #include <atomic>
 #include <cstdint>
 
-#include "allocate/buffer/buffertypes.hpp"
-#include "allocate/buffer/threadaccess.hpp"
-#include "allocate/buffer/data.tcc"
-#include "defs.hpp"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/buffer/threadaccess.hpp"
+#include "raftinc/allocate/buffer/data.tcc"
+#include "raftinc/defs.hpp"
 
 namespace raft
 {

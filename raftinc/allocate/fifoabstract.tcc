@@ -24,13 +24,13 @@
  */
 #ifndef RAFT_ALLOCATE_FIFOABSTRACT_TCC
 #define RAFT_ALLOCATE_FIFOABSTRACT_TCC  1
-#include "buffer/buffertypes.hpp"
-#include "buffer/data.tcc"
-#include "buffer/blocked.hpp"
-#include "buffer/internaldefs.hpp"
-#include "fifo.hpp"
-#include "datamanager.tcc"
-#include "defs.hpp"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/buffer/data.tcc"
+#include "raftinc/allocate/buffer/blocked.hpp"
+#include "raftinc/allocate/buffer/internaldefs.hpp"
+#include "raftinc/allocate/fifo.hpp"
+#include "raftinc/allocate/datamanager.tcc"
+#include "raftinc/defs.hpp"
 
 namespace raft
 {

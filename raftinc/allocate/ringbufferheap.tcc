@@ -25,8 +25,8 @@
 #ifndef RAFT_ALLOCATE_RINGBUFFERHEAP_TCC
 #define RAFT_ALLOCATE_RINGBUFFERHEAP_TCC  1
 
-#include "allocate/buffer/buffertypes.hpp"
-#include "allocate/ringbuffer_commonbase.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/ringbuffer_commonbase.tcc"
 
 namespace raft
 {

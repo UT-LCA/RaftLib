@@ -20,11 +20,11 @@
 #ifndef RAFT_RUNTIMES_HPP
 #define RAFT_RUNTIMES_HPP  1
 
-#include "dag.hpp"
-#include "runtime.hpp"
-#include "partition/partitioners.hpp"
-#include "allocate/allocators.hpp"
-#include "schedule/schedulers.hpp"
+#include "raftinc/dag.hpp"
+#include "raftinc/runtime.hpp"
+#include "raftinc/partition/partitioners.hpp"
+#include "raftinc/allocate/allocators.hpp"
+#include "raftinc/schedule/schedulers.hpp"
 
 namespace raft
 {

@@ -25,8 +25,8 @@
 #include <functional>
 #include <typeinfo>
 
-#include "defs.hpp"
 #include "demangle.hpp"
+#include "raftinc/defs.hpp"
 
 class common
 {

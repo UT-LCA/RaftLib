@@ -22,7 +22,7 @@
 #ifndef RAFT_PARTITION_PARTITION_HPP
 #define RAFT_PARTITION_PARTITION_HPP  1
 
-#include "defs.hpp"
+#include "raftinc/defs.hpp"
 
 namespace raft
 {

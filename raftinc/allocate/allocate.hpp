@@ -22,10 +22,10 @@
 #ifndef RAFT_ALLOCATE_ALLOCATE_HPP
 #define RAFT_ALLOCATE_ALLOCATE_HPP  1
 
-#include "defs.hpp"
-#include "streamingdata.hpp"
-#include "exceptions.hpp"
-#include "singleton.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/streamingdata.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/singleton.hpp"
 
 
 namespace raft

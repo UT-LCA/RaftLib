@@ -20,9 +20,9 @@
 #ifndef RAFT_ALLOCATE_FIFOFUNCTOR_HPP
 #define RAFT_ALLOCATE_FIFOFUNCTOR_HPP  1
 
-#include "streamingdata.hpp"
-#include "allocate/fifo.hpp"
-#include "allocate/ringbuffer.tcc"
+#include "raftinc/streamingdata.hpp"
+#include "raftinc/allocate/fifo.hpp"
+#include "raftinc/allocate/ringbuffer.tcc"
 
 
 namespace raft

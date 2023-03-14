@@ -31,17 +31,16 @@
 #if defined __APPLE__ || defined __linux
 #include <sys/mman.h>
 #include <shm>
-#include "datashmbase.tcc"
+#include "raftinc/allocate/buffer/datashmbase.tcc"
 #endif
-#include "rafttypes.hpp"
-#include "pointer.hpp"
-#include "signal.hpp"
-#include "buffertypes.hpp"
-#include "database.tcc"
-#include "dataheapbase.tcc"
-#include "inline_traits.tcc"
-
-#include "defs.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/allocate/buffer/pointer.hpp"
+#include "raftinc/allocate/buffer/signal.hpp"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/buffer/database.tcc"
+#include "raftinc/allocate/buffer/dataheapbase.tcc"
+#include "raftinc/allocate/buffer/inline_traits.tcc"
 
 namespace Buffer
 {
@@ -79,6 +78,7 @@ struct Data< T, Type::Heap, inline_alloc_t< T > > : public DataHeapBase< T >
     virtual T& copyRealT( const std::size_t pos, T* ptr )
     {
         new ( &(this)->store[ pos ] ) T( *ptr );
+        return (this)->store[ pos ];
     }
 
 }; /** end heap < Line Size **/

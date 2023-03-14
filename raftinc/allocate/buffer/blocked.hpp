@@ -22,7 +22,8 @@
 #define RAFTBLOCKED_HPP  1
 #include <cstdint>
 #include <cassert>
-#include "internaldefs.hpp"
+
+#include "raftinc/allocate/buffer/internaldefs.hpp"
 
 namespace Buffer
 {

@@ -21,10 +21,10 @@
 #ifndef RAFT_TASK_IMPL_HPP
 #define RAFT_TASK_IMPL_HPP  1
 
-#include "task.hpp"
-#include "streamingdata.hpp"
-#include "allocate/allocate.hpp"
-#include "schedule/schedule.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/streamingdata.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/schedule/schedule.hpp"
 
 namespace raft
 {

@@ -27,17 +27,17 @@
 
 #include <unordered_set>
 
-#include "defs.hpp"
-#include "dag.hpp"
-#include "kernel.hpp"
-#include "port_info.hpp"
-#include "exceptions.hpp"
-#include "pollingworker.hpp"
-#include "oneshottask.hpp"
-#include "allocate/allocate.hpp"
-#include "allocate/fifo.hpp"
-#include "allocate/ringbuffer.tcc"
-#include "allocate/buffer/buffertypes.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/dag.hpp"
+#include "raftinc/kernel.hpp"
+#include "raftinc/port_info.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/pollingworker.hpp"
+#include "raftinc/oneshottask.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/allocate/fifo.hpp"
+#include "raftinc/allocate/ringbuffer.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
 
 /**
  * ALLOC_ALIGN_WIDTH - in previous versions we'd align based
@@ -234,9 +234,10 @@ public:
         if( POLLING_WORKER == task->type )
         {
             auto *t( reinterpret_cast< PollingWorker* >( task ) );
-            polling_worker_has_input_ports( t );
+            return polling_worker_has_input_ports( t );
         }
         //TODO: design for oneshot task
+        return true;
     }
 
     virtual void taskPush( Task *task, const port_name_t &name, DataRef &item )
@@ -368,9 +369,9 @@ protected:
         {
             case( trigger::any_port ):
             {
-                for( auto &[ name, info ] : port_list )
+                for( auto &p : port_list )
                 {
-                   const auto size( get_FIFO( info )->size() );
+                   const auto size( get_FIFO( p.second )->size() );
                    if( size > 0 )
                    {
                       return( true );
@@ -380,9 +381,9 @@ protected:
             break;
             case( trigger::all_port ):
             {
-                for( auto &[ name, info ] : port_list )
+                for( auto &p : port_list )
                 {
-                   const auto size( get_FIFO( info )->size() );
+                   const auto size( get_FIFO( p.second )->size() );
                    /** no data avail on this port, return false **/
                    if( size == 0 )
                    {
@@ -486,9 +487,9 @@ protected:
             return ( cap > 0 );
         }
 
-        for( auto &[ name, info ] : port_list )
+        for( auto &p : port_list )
         {
-           const auto cap( get_FIFO( info )->capacity() );
+           const auto cap( get_FIFO( p.second )->capacity() );
            /** no data avail on this port, return false **/
            if( cap == 0 )
            {
@@ -512,9 +513,9 @@ protected:
     {
         auto &port_list( kernel->input );
         /** assume data check is already complete **/
-        for( auto &[ name, info ] : port_list )
+        for( auto &p : port_list )
         {
-            if( ! get_FIFO( info )->is_invalid() )
+            if( ! get_FIFO( p.second )->is_invalid() )
             {
                 return( false );
             }
@@ -533,13 +534,14 @@ protected:
         auto *ptr( new StreamingData() );
         auto &port_list( kernel->input );
 
-        for( auto &[ name, info ] : port_list )
+        for( auto &p : port_list )
         {
-            FIFO *fifo( get_FIFO( info ) );
+            FIFO *fifo( get_FIFO( p.second ) );
             const auto size( fifo->size() );
             if( 0 < size )
             {
-                ptr->set( name, get_FIFOFunctor( info )->peek( fifo ) );
+                ptr->set( p.first,
+                          get_FIFOFunctor( p.second )->peek( fifo ) );
             }
         }
         return( *ptr );
@@ -556,13 +558,14 @@ protected:
         auto *ptr( new StreamingData() );
         auto &port_list( kernel->output );
 
-        for( auto &[ name, info ] : port_list )
+        for( auto &p : port_list )
         {
-            FIFO *fifo( get_FIFO( info ) );
+            FIFO *fifo( get_FIFO( p.second ) );
             const auto cap( fifo->capacity() );
             if( 0 < cap )
             {
-                ptr->set( name, get_FIFOFunctor( info )->allocate( fifo ) );
+                ptr->set( p.first,
+                          get_FIFOFunctor( p.second )->allocate( fifo ) );
             }
         }
         return( *ptr );
@@ -613,28 +616,28 @@ protected:
         auto nclones( kernel->getCloneFactor() );
 
         auto &input_ports( kernel->input );
-        for( auto &[ name, info ] : input_ports )
+        for( auto &p : input_ports )
         {
-            const auto nfifos( port_fifo[ &info ]->size() - 1 );
-            for( int i( worker->clone_id ); nfifos > i; i += nclones )
+            const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
+            for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
             {
-                worker->fifos_in[ name ].push_back(
-                        port_fifo[ &info ]->at( i ) );
+                worker->fifos_in[ p.first ].push_back(
+                        port_fifo[ &p.second ]->at( i ) );
             }
-            worker->fifos_in_idx[ name ] = 0;
-            worker->names_in.push_back( name );
+            worker->fifos_in_idx[ p.first ] = 0;
+            worker->names_in.push_back( p.first );
         }
         auto &output_ports( kernel->output );
-        for( auto &[ name, info ] : output_ports )
+        for( auto &p : output_ports )
         {
-            const auto nfifos( port_fifo[ &info ]->size() - 1 );
-            for( int i( worker->clone_id ); nfifos > i; i += nclones )
+            const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
+            for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
             {
-                worker->fifos_out[ name ].push_back(
-                        port_fifo[ &info ]->at( i ) );
+                worker->fifos_out[ p.first ].push_back(
+                        port_fifo[ &p.second ]->at( i ) );
             }
-            worker->fifos_out_idx[ name ] = 0;
-            worker->names_out.push_back( name );
+            worker->fifos_out_idx[ p.first ] = 0;
+            worker->names_out.push_back( p.first );
         }
     }
 
@@ -643,10 +646,10 @@ protected:
         oneshot->stream_out = new StreamingData();
         auto &output_ports( oneshot->kernel->output );
 
-        for( auto &[ name, info ] : output_ports )
+        for( auto &p : output_ports )
         {
             oneshot->stream_out->set(
-                    name, get_FIFOFunctor( info )->oneshot_allocate() );
+                    p.first, get_FIFOFunctor( p.second )->oneshot_allocate() );
             /* TODO: needs to find a place to release the malloced data */
         }
     }
@@ -660,16 +663,16 @@ protected:
     {
         auto &output_list( kernel->output );
 
-        for( auto &[ name, info ] : output_list )
+        for( auto &p : output_list )
         {
-            get_FIFOFunctor( info )->send( get_FIFO( info ) );
+            get_FIFOFunctor( p.second )->send( get_FIFO( p.second ) );
         }
 
         auto &input_list( kernel->input );
 
-        for( auto &[ name, info ] : input_list )
+        for( auto &p : input_list )
         {
-            get_FIFOFunctor( info )->recycle( get_FIFO( info ) );
+            get_FIFOFunctor( p.second )->recycle( get_FIFO( p.second ) );
         }
     }
 

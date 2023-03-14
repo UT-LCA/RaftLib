@@ -33,12 +33,11 @@
 #include <type_traits>
 #include <stdexcept>
 
-#include "allocate/buffer/data.tcc"
-#include "allocate/buffer/blocked.hpp"
-#include "allocate/buffer/inline_traits.tcc"
-
-#include "defs.hpp"
-#include "rafttypes.hpp"
+#include "raftinc/allocate/buffer/data.tcc"
+#include "raftinc/allocate/buffer/blocked.hpp"
+#include "raftinc/allocate/buffer/inline_traits.tcc"
+#include "raftinc/defs.hpp"
+#include "raftinc/rafttypes.hpp"
 
 
 namespace raft

@@ -29,8 +29,9 @@
 #include <cmath>
 #include <raft>
 #include <type_traits>
-#include "filechunk.tcc"
-#include "chunkiterator.tcc"
+
+#include "raftinc/utils/filechunk.tcc"
+#include "raftinc/utils/chunkiterator.tcc"
 
 
 namespace raft{

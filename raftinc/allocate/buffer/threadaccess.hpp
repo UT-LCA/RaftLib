@@ -21,7 +21,8 @@
 #ifndef RAFTTHREADACCESS_HPP
 #define RAFTTHREADACCESS_HPP  1
 #include <cstdint>
-#include "internaldefs.hpp"
+
+#include "raftinc/allocate/buffer/internaldefs.hpp"
 
 namespace Buffer
 {

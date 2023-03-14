@@ -22,7 +22,8 @@
 #define RAFT_MAKEDOT_HPP  1
 #include <ostream>
 #include <sstream>
-#include "defs.hpp"
+
+#include "raftinc/defs.hpp"
 
 namespace raft
 {

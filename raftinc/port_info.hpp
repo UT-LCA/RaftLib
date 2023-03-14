@@ -24,10 +24,10 @@
 #include <typeindex>
 #include <cstddef>
 
-#include "allocate/fifo.hpp"
-#include "allocate/fifofunctor.hpp"
-#include "allocate/ringbuffer.tcc"
-#include "allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/fifo.hpp"
+#include "raftinc/allocate/fifofunctor.hpp"
+#include "raftinc/allocate/ringbuffer.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
 
 namespace raft
 {

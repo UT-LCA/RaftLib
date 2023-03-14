@@ -21,8 +21,8 @@
 #ifndef RAFT_KPAIR_HPP
 #define RAFT_KPAIR_HPP  1
 
-#include "defs.hpp"
-#include "kernelport.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kernelport.hpp"
 
 namespace raft
 {

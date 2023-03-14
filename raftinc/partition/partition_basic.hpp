@@ -26,8 +26,9 @@
 #include <cstdint>
 #include <cstddef>
 #include <thread>
-#include "dag.hpp"
-#include "partition/partition.hpp"
+
+#include "raftinc/dag.hpp"
+#include "raftinc/partition/partition.hpp"
 
 namespace raft
 {

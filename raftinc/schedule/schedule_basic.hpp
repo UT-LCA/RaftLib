@@ -20,17 +20,18 @@
  */
 #ifndef RAFT_SCHEDULE_SCHEDULE_BASIC_HPP
 #define RAFT_SCHEDULE_SCHEDULE_BASIC_HPP  1
-#include "signalhandler.hpp"
-#include "rafttypes.hpp"
-#include "defs.hpp"
-#include "kernel.hpp"
-#include "kernelkeeper.tcc"
-#include "sysschedutil.hpp"
-#include "dag.hpp"
-#include "task.hpp"
-#include "allocate/allocate.hpp"
-#include "pollingworker.hpp"
 #include <affinity>
+
+#include "raftinc/signalhandler.hpp"
+#include "raftinc/rafttypes.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/kernel.hpp"
+#include "raftinc/kernelkeeper.tcc"
+#include "raftinc/sysschedutil.hpp"
+#include "raftinc/dag.hpp"
+#include "raftinc/task.hpp"
+#include "raftinc/allocate/allocate.hpp"
+#include "raftinc/pollingworker.hpp"
 
 namespace raft {
 
@@ -164,7 +165,6 @@ public:
 
     virtual void postexit( Task* task )
     {
-        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
         Singleton::allocate()->invalidateOutputs( task );
         task->sched_meta->finished = true;
     }

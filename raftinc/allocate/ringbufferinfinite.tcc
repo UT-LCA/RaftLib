@@ -24,10 +24,10 @@
 #ifndef RAFT_ALLOCATE_RINGBUFFERINFINITE_TCC
 #define RAFT_ALLOCATE_RINGBUFFERINFINITE_TCC  1
 
-#include "allocate/fifoabstract.tcc"
-#include "allocate/buffer/buffertypes.hpp"
-#include "allocate/buffer/inline_traits.tcc"
-#include "defs.hpp"
+#include "raftinc/allocate/fifoabstract.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/buffer/inline_traits.tcc"
+#include "raftinc/defs.hpp"
 
 namespace raft
 {

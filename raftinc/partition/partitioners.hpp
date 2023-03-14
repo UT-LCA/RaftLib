@@ -24,10 +24,10 @@
 /**
  * simply a list of the current partitioners...
  */
-#include "partition.hpp"
-#include "partition_basic.hpp"
+#include "raftinc/partition/partition.hpp"
+#include "raftinc/partition/partition_basic.hpp"
 #if USE_PARTITION
-#include "partition_scotch.hpp"
+#include "raftind/partition/partition_scotch.hpp"
 #endif
 
 #endif /* END RAFT_PARTITION_PARTITIONERS_HPP */

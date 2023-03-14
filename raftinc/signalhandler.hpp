@@ -26,7 +26,8 @@
 #include <exception>
 #include <unordered_map>
 #include <string>
-#include "rafttypes.hpp"
+
+#include "raftinc/rafttypes.hpp"
 
 namespace raft
 {

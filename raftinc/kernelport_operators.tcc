@@ -20,9 +20,9 @@
 #ifndef RAFT_KERNELPORT_OPERATORS_TCC
 #define RAFT_KERNELPORT_OPERATORS_TCC  1
 
-#include "kernelport.hpp"
-#include "kpair.hpp"
-#include "kernel.hpp"
+#include "raftinc/kernelport.hpp"
+#include "raftinc/kpair.hpp"
+#include "raftinc/kernel.hpp"
 
 template < int N >
 raft::Kpair&

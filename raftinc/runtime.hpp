@@ -20,7 +20,7 @@
 #ifndef RAFT_RUNTIME_HPP
 #define RAFT_RUNTIME_HPP  1
 
-#include "dag.hpp"
+#include "raftinc/dag.hpp"
 
 namespace raft
 {

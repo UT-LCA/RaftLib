@@ -21,7 +21,8 @@
 #ifndef RAFTSIGNAL_HPP
 #define RAFTSIGNAL_HPP  1
 #include <cstddef>
-#include "rafttypes.hpp"
+
+#include "raftinc/rafttypes.hpp"
 /**
  * TODO, add templated signal so that the user
  * can define tuple-like structures based on

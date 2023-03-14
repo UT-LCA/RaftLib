@@ -46,6 +46,7 @@
 #include "./raftinc/utils/writeeach.tcc"
 #include "./raftinc/utils/foreach.tcc"
 #include "./raftinc/utils/lambdak.tcc"
+#include "./raftinc/utils/search.tcc"
 
 /** fifo includes **/
 #include "./raftinc/allocate/fifo.hpp"

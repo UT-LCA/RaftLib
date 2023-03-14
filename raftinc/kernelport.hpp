@@ -21,7 +21,8 @@
 #define RAFT_KERNELPORT_HPP  1
 
 #include <stack>
-#include "rafttypes.hpp"
+
+#include "raftinc/rafttypes.hpp"
 
 namespace raft
 {

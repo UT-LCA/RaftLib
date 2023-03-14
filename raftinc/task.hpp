@@ -21,9 +21,9 @@
 #define RAFT_TASK_HPP  1
 #include <vector>
 
-#include "exceptions.hpp"
-#include "defs.hpp"
-#include "rafttypes.hpp"
+#include "raftinc/exceptions.hpp"
+#include "raftinc/defs.hpp"
+#include "raftinc/rafttypes.hpp"
 
 namespace raft
 {

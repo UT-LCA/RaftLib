@@ -32,12 +32,12 @@
 #include <utility>
 #include <vector>
 
-#include "allocate/fifo.hpp"
-#include "allocate/fifoabstract.tcc"
-#include "allocate/ringbufferbase.tcc"
-#include "allocate/ringbufferbase_monitored.tcc"
-#include "allocate/ringbufferbase_mutexed.tcc"
-#include "allocate/buffer/buffertypes.hpp"
+#include "raftinc/allocate/fifo.hpp"
+#include "raftinc/allocate/fifoabstract.tcc"
+#include "raftinc/allocate/ringbufferbase.tcc"
+#include "raftinc/allocate/ringbufferbase_monitored.tcc"
+#include "raftinc/allocate/ringbufferbase_mutexed.tcc"
+#include "raftinc/allocate/buffer/buffertypes.hpp"
 
 
 namespace raft
