@@ -126,7 +126,7 @@ public:
         {
             const int nfifos = std::max( a.my_kernel->getCloneFactor(),
                                          b.my_kernel->getCloneFactor() );
-            auto *fifos( new std::vector< FIFO* >( nfifos ) );
+            auto *fifos( new std::vector< FIFO* >( nfifos + 1 ) );
             (this)->port_fifo[ &a ] = fifos;
             (this)->port_fifo[ &b ] = fifos;
             if( nullptr != a.runtime_info.existing_buffer.ptr )
@@ -149,6 +149,12 @@ public:
                                 nullptr );
                 }
             }
+            /* allocate one more fifo as the mutex-protected fifo */
+            fifos->back() =
+                get_FIFOFunctor(
+                        a )->make_new_fifo_mutexed( INITIAL_ALLOC_SIZE,
+                                                    ALLOC_ALIGN_WIDTH,
+                                                    nullptr );
             a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
         };
 
@@ -248,7 +254,8 @@ public:
         }
         else /* if( ONE_SHOT == task->type ) */
         {
-            // FIXME: multiple pushes in one exe() that exhausts buffer?
+            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
+            fifo = fifos->back();
         }
         functor->push( fifo, item );
     }
@@ -263,12 +270,11 @@ public:
             auto *worker( reinterpret_cast< PollingWorker* >( task ) );
             auto &fifos( worker->fifos_out[ name ] );
             fifo = fifos[ worker->fifos_out_idx[ name ] ];
-            worker->fifos_out_idx[ name ] =
-                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
         }
         else /* if( ONE_SHOT == task->type ) */
         {
-            // FIXME: multiple pushes in one exe() that exhausts buffer?
+            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
+            fifo = fifos->back();
         }
         return functor->allocate( fifo );
     }
@@ -288,9 +294,24 @@ public:
         }
         else /* if( ONE_SHOT == task->type ) */
         {
-            // FIXME: multiple pushes in one exe() that exhausts buffer?
+            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
+            fifo = fifos->back();
         }
         functor->send( fifo );
+    }
+
+    virtual DataRef portPop( const PortInfo *pi )
+    {
+        auto *functor( pi->runtime_info.fifo_functor );
+        FIFO *fifo = port_fifo[ pi ]->back();
+        //FIXME: could have race condition, that the data is popped by another thread
+        if( 0 == fifo->size() )
+        {
+            return DataRef();
+        }
+        DataRef ref( functor->oneshot_allocate() );
+        functor->pop( fifo, ref );
+        return ref;
     }
 
 protected:
@@ -594,7 +615,7 @@ protected:
         auto &input_ports( kernel->input );
         for( auto &[ name, info ] : input_ports )
         {
-            const auto nfifos( port_fifo[ &info ]->size() );
+            const auto nfifos( port_fifo[ &info ]->size() - 1 );
             for( int i( worker->clone_id ); nfifos > i; i += nclones )
             {
                 worker->fifos_in[ name ].push_back(
@@ -606,7 +627,7 @@ protected:
         auto &output_ports( kernel->output );
         for( auto &[ name, info ] : output_ports )
         {
-            const auto nfifos( port_fifo[ &info ]->size() );
+            const auto nfifos( port_fifo[ &info ]->size() - 1 );
             for( int i( worker->clone_id ); nfifos > i; i += nclones )
             {
                 worker->fifos_out[ name ].push_back(
@@ -664,9 +685,6 @@ protected:
         {
             return;
         }
-
-        //TODO: what is the logic to cleanup oneshot task buffer and data?
-
     }
 
     /**
@@ -719,7 +737,7 @@ protected:
     /**
      * keeps a list of all currently allocated FIFO objects
      */
-    std::unordered_map< PortInfo*, std::vector< FIFO* >* > port_fifo;
+    std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
 
     volatile bool exited = false;
     volatile bool ready = false;

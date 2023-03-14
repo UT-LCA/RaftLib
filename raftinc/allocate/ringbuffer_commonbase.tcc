@@ -476,6 +476,7 @@ public:
         (this)->producer_data.allocate_called = false;
         Buffer::Pointer::inc( buff_ptr->write_pt );
         (this)->datamanager.exitBuffer( Buffer::allocate );
+        (this)->local_producer_release();
     }
 
 
@@ -504,6 +505,7 @@ public:
         (this)->producer_data.allocate_called = false;
         n_allocated = 0;
         (this)->datamanager.exitBuffer( Buffer::allocate_range );
+        (this)->local_producer_release();
     }
 
 
@@ -524,6 +526,7 @@ protected:
      */
     virtual void local_allocate( void **ptr )
     {
+        (this)->local_producer_acquire();
         for(;;)
         {
             (this)->datamanager.enterBuffer( Buffer::allocate );
@@ -558,6 +561,7 @@ protected:
 
     virtual void local_allocate_n( void *ptr, const std::size_t n )
     {
+        (this)->local_producer_acquire();
         for( ;; )
         {
             (this)->datamanager.enterBuffer( Buffer::allocate_range );
@@ -634,6 +638,7 @@ protected:
      */
     virtual void local_push( void *ptr, const signal::value_t &signal )
     {
+        (this)->local_producer_acquire();
         for(;;)
         {
             (this)->datamanager.enterBuffer( Buffer::push );
@@ -703,6 +708,7 @@ protected:
         }
 #endif
         (this)->datamanager.exitBuffer( Buffer::push );
+        (this)->local_producer_release();
     }
 
 
@@ -715,6 +721,7 @@ protected:
      */
     virtual void local_pop( void *ptr, signal::value_t *signal )
     {
+        (this)->local_consumer_acquire();
         for(;;)
         {
             (this)->datamanager.enterBuffer( Buffer::pop );
@@ -765,6 +772,7 @@ protected:
         (this)->consumer_data.read_stats->bec.count++;
         Buffer::Pointer::inc( buff_ptr->read_pt );
         (this)->datamanager.exitBuffer( Buffer::pop );
+        (this)->local_consumer_release();
     }
 
 
@@ -777,6 +785,7 @@ protected:
      */
     virtual void local_peek( void **ptr, signal::value_t *signal )
     {
+        (this)->local_consumer_acquire();
         for(;;)
         {
 
@@ -841,6 +850,7 @@ protected:
                                    const std::size_t n,
                                    std::size_t &curr_pointer_loc )
     {
+        (this)->local_consumer_acquire();
         for(;;)
         {
 
@@ -931,6 +941,7 @@ protected:
             Buffer::Pointer::inc( buff_ptr->read_pt );
             (this)->datamanager.exitBuffer( Buffer::recycle );
         } while( --range > 0 );
+        (this)->local_consumer_release();
         return;
     }
 

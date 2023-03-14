@@ -46,6 +46,10 @@ public:
         ref = reinterpret_cast< void * >( &data_ref );
         return *this;
     }
+    operator bool() const
+    {
+        return nullptr != ref;
+    }
 private:
     void *ref = nullptr;
 };
@@ -140,15 +144,17 @@ public:
     {
         auto &name( touched.back() );
         auto iter( store.find( name ) );
-        if( store.end() == iter )
+        if( store.end() == iter || sent.end() != sent.find( name ) )
         {
             DataRef ref;
             ref.set< T >( item );
+            //std::cout << task->id << std::endl;
             task->push( name, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
         iter->second.get< T >() = item;
+        sent.insert( name );
     }
 
     template< class T >
@@ -156,7 +162,7 @@ public:
     {
         auto &name( touched.back() );
         auto iter( store.find( name ) );
-        if( store.end() == iter )
+        if( store.end() == iter || sent.end() != sent.find( name ) )
         {
             DataRef ref;
             ref.set< T >( item );
@@ -165,6 +171,7 @@ public:
         }
         //TODO: it assumes assign operator is defined for T
         iter->second.get< T >() = item;
+        sent.insert( name );
     }
 
     template< class T >
@@ -172,7 +179,7 @@ public:
     {
         auto &name( touched.back() );
         auto iter( store.find( name ) );
-        if( store.end() == iter )
+        if( store.end() == iter || sent.end() != sent.find( name ) )
         {
             return task->allocate( name ).get< T >();
         }
@@ -182,6 +189,7 @@ public:
     void send( Task *task )
     {
         task->send( touched.back() );
+        sent.insert( touched.back() );
     }
 
     std::unordered_map< port_name_t, DataRef >::iterator begin()
@@ -199,9 +207,15 @@ public:
         return store.end() != store.find( name );
     }
 
+    std::unordered_set< port_name_t > &getSent()
+    {
+        return sent;
+    }
+
 private:
     std::unordered_map< port_name_t, DataRef > store;
     std::vector< port_name_t > touched;
+    std::unordered_set< port_name_t > sent;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

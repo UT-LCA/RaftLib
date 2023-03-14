@@ -176,11 +176,17 @@ protected:
         Kernel *mykernel( task->kernel );
         auto *tmeta( reinterpret_cast< OneShotStdSchedMeta* >(
                     task->sched_meta ) );
-        for( auto &[ name, ref ] : *t->stream_out )
+        for( auto &name : t->stream_out->getSent() )
         {
             const auto *other_pi( mykernel->output[ name ].other_port );
             //TODO: deal with a kernel depends on multiple producers
-            shot_kernel( other_pi->my_kernel, task, name, other_pi->my_name );
+            shot_kernel( other_pi->my_kernel, other_pi->my_name,
+                         t->stream_out->get( name ) );
+            DataRef ref;
+            while( ref = Singleton::allocate()->portPop( other_pi ) )
+            {
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
+            }
         }
     }
 
@@ -196,8 +202,7 @@ protected:
         start_source_kernel_task( task->kernel );
     }
 
-    void shot_kernel( Kernel *kernel, Task *task, const port_name_t &src_name,
-                      const port_name_t &dst_name )
+    void shot_kernel( Kernel *kernel, const port_name_t &dst_name, DataRef &ref )
     {
         OneShotTask *tnext = new OneShotTask();
         tnext->kernel = kernel;
@@ -210,10 +215,8 @@ protected:
         tnext->id = task_id++;
         tasks_mutex.unlock();
 
-        auto *oneshot( reinterpret_cast< OneShotTask* >( task ) );
-        /* TODO: inform allocate to move the output of task to tnext */
         tnext->stream_in = new StreamingData();
-        tnext->stream_in->set( dst_name, oneshot->stream_out->get( src_name ) );
+        tnext->stream_in->set( dst_name, ref );
         Singleton::allocate()->taskInit( tnext );
 
         while( ! tasks_mutex.try_lock() )

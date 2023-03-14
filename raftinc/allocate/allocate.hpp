@@ -78,6 +78,8 @@ public:
     virtual DataRef taskAllocate( Task *task, const port_name_t &name ) = 0;
     virtual void taskSend( Task *task, const port_name_t &name ) = 0;
 
+    virtual DataRef portPop( const PortInfo *pi ) = 0;
+
 }; /** end Allocate decl **/
 
 } /** end namespace raft **/

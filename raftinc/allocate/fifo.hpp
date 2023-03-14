@@ -946,6 +946,39 @@ protected:
 
 
     /**
+     * local_consumer_acquire - acquire exclusive consumer access
+     */
+    virtual inline FIFO *local_consumer_acquire()
+    {
+        return this;
+    }
+
+
+    /**
+     * local_consumer_release - release exclusive consumer access
+     */
+    virtual inline void local_consumer_release()
+    {
+    }
+
+
+    /**
+     * local_producer_acquire - acquire exclusive producer access
+     */
+    virtual inline FIFO *local_producer_acquire()
+    {
+        return this;
+    }
+
+
+    /**
+     * local_producer_release - release exclusive producer access
+     */
+    virtual inline void local_producer_release()
+    {
+    }
+
+    /**
      * needed to keep as a friend for signalling access
      */
     friend class ScheduleBasic;

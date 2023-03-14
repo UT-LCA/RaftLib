@@ -36,6 +36,7 @@
 #include "allocate/fifoabstract.tcc"
 #include "allocate/ringbufferbase.tcc"
 #include "allocate/ringbufferbase_monitored.tcc"
+#include "allocate/ringbufferbase_mutexed.tcc"
 #include "allocate/buffer/buffertypes.hpp"
 
 
@@ -44,13 +45,10 @@ namespace raft
 
 /**
  * RingBuffer - default specializationnn with heap as buffer type.
- * This version has no "monitor" thread, but does have the ability
- * to query queue size which can be quite useful for some
- * monitoring tasks.
  */
 template < class T,
            Buffer::Type::value_t B = Buffer::Type::Heap,
-           bool monitor = false >
+           bool mutexed = false >
 class RingBuffer : public RingBufferBase< T, B >
 {
 public:
@@ -138,8 +136,8 @@ public:
 };
 
 template <class T>
-class RingBuffer< T, Buffer::Type::Heap, true /* monitor */ >
-    : public RingBufferBaseMonitored< T, Buffer::Type::Heap >
+class RingBuffer< T, Buffer::Type::Heap, true /* mutexed */ >
+    : public RingBufferBaseMutexed< T, Buffer::Type::Heap >
 {
 public:
     /**
@@ -147,7 +145,7 @@ public:
      * data structures.
      */
     RingBuffer( const std::size_t n, const std::size_t align = 16 )
-        : RingBufferBaseMonitored< T, Buffer::Type::Heap >( n, align )
+        : RingBufferBaseMutexed< T, Buffer::Type::Heap >( n, align )
     {
         /** nothing really to do **/
     }
