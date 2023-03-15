@@ -22,6 +22,10 @@
 #define RAFT_SCHEDULE_SCHEDULE_BASIC_HPP  1
 #include <affinity>
 
+#if QTHREAD_FOUND
+#include <qthread/qthread.hpp>
+#endif
+
 #include "raftinc/signalhandler.hpp"
 #include "raftinc/rafttypes.hpp"
 #include "raftinc/defs.hpp"
@@ -38,15 +42,54 @@ namespace raft {
 struct StdThreadSchedMeta : public TaskSchedMeta
 {
     StdThreadSchedMeta( Task *the_task ) :
-        TaskSchedMeta( the_task ), th( [ & ](){
-                (this)->task->sched_meta = this;
-                (this)->task->exe(); } )
+        TaskSchedMeta( the_task ),
+        th( [ & ](){ (this)->task->sched_meta = this;
+                     (this)->task->exe(); } )
     {
+    }
+
+    virtual ~StdThreadSchedMeta()
+    {
+        th.join();
     }
 
     std::thread th;
     /* map every task to a kthread */
 };
+
+#if QTHREAD_FOUND
+struct QThreadSchedMeta : public TaskSchedMeta
+{
+    QThreadSchedMeta( Task *the_task ) : TaskSchedMeta( the_task )
+    {
+        task->sched_meta = this;
+        qthread_spawn( QThreadSchedMeta::run,
+                       ( void* ) this,
+                       0,
+                       0,
+                       0,
+                       nullptr,
+                       NO_SHEPHERD,
+                       0 );
+    }
+
+    virtual ~QThreadSchedMeta()
+    {
+    }
+
+    static aligned_t run( void *data )
+    {
+        auto * const tmeta( reinterpret_cast< QThreadSchedMeta* >( data ) );
+        tmeta->task->exe();
+    }
+};
+#endif
+
+#if USE_QTHREAD
+using PollingWorkerSchedMeta = struct QThreadSchedMeta;
+#else
+using PollingWorkerSchedMeta = struct StdThreadSchedMeta;
+#endif
 
 
 class ScheduleBasic : public Schedule
@@ -58,8 +101,22 @@ public:
         sink_kernels( dag.getSinkKernels() ),
         alloc( the_alloc )
     {
+#if USE_QTHREAD
+        const auto ret_val( qthread_initialize() );
+        if( 0 != ret_val )
+        {
+            std::cerr << "failure to initialize qthreads runtime, exiting\n";
+            exit( EXIT_FAILURE );
+        }
+#endif
     }
-    virtual ~ScheduleBasic() = default;
+    virtual ~ScheduleBasic()
+    {
+#if USE_QTHREAD
+        /** kill off the qthread structures **/
+        qthread_finalize();
+#endif
+    }
 
     /**
      * schedule - called to start execution of all
@@ -73,12 +130,7 @@ public:
             raft::yield();
         }
 
-        auto &container( kernels.acquire() );
-        for( auto * const k : container )
-        {
-            start_polling_worker( k );
-        }
-        kernels.release();
+        (this)->start_tasks();
 
         bool keep_going( true );
         while( keep_going )
@@ -89,21 +141,19 @@ public:
             }
             //exit, we have a lock
             keep_going = false;
-            TaskSchedMeta* tparent( tasks );
+            TaskSchedMeta *tparent( tasks );
             //loop over each thread and check if done
             while( nullptr != tparent->next )
             {
-                auto *tmeta( reinterpret_cast< StdThreadSchedMeta* >(
-                            tparent->next ) );
-                if( tmeta->finished )
+                if( tparent->next->finished )
                 {
-                    tmeta->th.join();
-                    tparent->next = tmeta->next;
-                    delete tmeta;
+                    TaskSchedMeta *ttmp = tparent->next;
+                    tparent->next = ttmp->next;
+                    delete ttmp;
                 }
                 else /* a task ! finished */
                 {
-                    tparent = tmeta;
+                    tparent = tparent->next;
                     keep_going = true;
                 }
             }
@@ -171,6 +221,16 @@ public:
 
 protected:
 
+    virtual void start_tasks()
+    {
+        auto &container( kernels.acquire() );
+        for( auto * const k : container )
+        {
+            start_polling_worker( k );
+        }
+        kernels.release();
+    }
+
     virtual void start_polling_worker( Kernel * const kernel )
     {
         const int nclones =
@@ -202,7 +262,7 @@ protected:
             //assert( Singleton::allocate()->isReady() );
             Singleton::allocate()->taskInit( task );
 
-            auto *tmeta( new StdThreadSchedMeta( task ) );
+            auto *tmeta( new PollingWorkerSchedMeta( task ) );
 
             while( ! tasks_mutex.try_lock() )
             {

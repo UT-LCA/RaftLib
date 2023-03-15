@@ -204,12 +204,12 @@ public:
     {
         if( POLLING_WORKER == task->type )
         {
-            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            auto *t( static_cast< PollingWorker* >( task ) );
             polling_worker_init( t );
         }
         else if( ONE_SHOT == task->type )
         {
-            auto *t( reinterpret_cast< OneShotTask* >( task ) );
+            auto *t( static_cast< OneShotTask* >( task ) );
             oneshot_init( t );
         }
     }
@@ -223,7 +223,7 @@ public:
     {
         if( POLLING_WORKER == task->type )
         {
-            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            auto *t( static_cast< PollingWorker* >( task ) );
             polling_worker_invalidate_outputs( t );
         }
         //TODO: design for oneshot task
@@ -233,7 +233,7 @@ public:
     {
         if( POLLING_WORKER == task->type )
         {
-            auto *t( reinterpret_cast< PollingWorker* >( task ) );
+            auto *t( static_cast< PollingWorker* >( task ) );
             return polling_worker_has_input_ports( t );
         }
         //TODO: design for oneshot task
@@ -247,7 +247,7 @@ public:
         FIFO *fifo;
         if( POLLING_WORKER == task->type )
         {
-            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto *worker( static_cast< PollingWorker* >( task ) );
             auto &fifos( worker->fifos_out[ name ] );
             fifo = fifos[ worker->fifos_out_idx[ name ] ];
             worker->fifos_out_idx[ name ] =
@@ -268,7 +268,7 @@ public:
         FIFO *fifo;
         if( POLLING_WORKER == task->type )
         {
-            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto *worker( static_cast< PollingWorker* >( task ) );
             auto &fifos( worker->fifos_out[ name ] );
             fifo = fifos[ worker->fifos_out_idx[ name ] ];
         }
@@ -287,7 +287,7 @@ public:
         FIFO *fifo;
         if( POLLING_WORKER == task->type )
         {
-            auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+            auto *worker( static_cast< PollingWorker* >( task ) );
             auto &fifos( worker->fifos_out[ name ] );
             fifo = fifos[ worker->fifos_out_idx[ name ] ];
             worker->fifos_out_idx[ name ] =
@@ -424,7 +424,7 @@ protected:
         }
 
         assert( POLLING_WORKER == task->type );
-        auto *worker( reinterpret_cast< PollingWorker* >( task ) );
+        auto *worker( static_cast< PollingWorker* >( task ) );
         if( null_port_value != name )
         {
             auto &fifos( worker->fifos_in[ name ] );
@@ -580,7 +580,7 @@ protected:
     {
         assert( ONE_SHOT == task->type );
         auto &buf( kernel_pack_output_buf( task->kernel ) );
-        auto *t( reinterpret_cast< OneShotTask* >( task ) );
+        auto *t( static_cast< OneShotTask* >( task ) );
         t->stream_out = &buf;
         return buf;
     }

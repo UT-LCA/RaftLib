@@ -34,6 +34,7 @@ class Task;
 struct TaskSchedMeta
 {
     TaskSchedMeta( Task *the_task = nullptr ) : task( the_task ) {}
+    virtual ~TaskSchedMeta() = default;
     Task * const task;
     bool finished = false;
     TaskSchedMeta * volatile next = nullptr;

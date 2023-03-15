@@ -44,10 +44,52 @@ struct OneShotStdSchedMeta : public TaskSchedMeta
     {
     }
 
+    virtual ~OneShotStdSchedMeta()
+    {
+        th.join();
+    }
+
     volatile bool is_source;
     std::thread th;
     /* map every task to a kthread */
 };
+
+#if QTHREAD_FOUND
+struct OneShotQTSchedMeta : public TaskSchedMeta
+{
+    OneShotQTSchedMeta( Task *the_task, bool is_s = false ) :
+        TaskSchedMeta( the_task ), is_source( is_s )
+    {
+        task->sched_meta = this;
+        qthread_spawn( OneShotQTSchedMeta::run,
+                       ( void* ) this,
+                       0,
+                       0,
+                       0,
+                       nullptr,
+                       NO_SHEPHERD,
+                       0 );
+    }
+
+    virtual ~OneShotQTSchedMeta()
+    {
+    }
+
+    static aligned_t run( void *data )
+    {
+        auto * const tmeta( reinterpret_cast< OneShotQTSchedMeta* >( data ) );
+        tmeta->task->exe();
+    }
+
+    volatile bool is_source;
+};
+#endif
+
+#if USE_QTHREAD
+using OneShotSchedMeta = struct OneShotQTSchedMeta;
+#else
+using OneShotSchedMeta = struct OneShotStdSchedMeta;
+#endif
 
 
 class ScheduleOneShot : public ScheduleBasic
@@ -59,72 +101,13 @@ public:
     }
     virtual ~ScheduleOneShot() = default;
 
-    /**
-     * schedule - called to start execution of all
-     * kernels.  Implementation specific so it
-     * is purely virtual.
-     */
-    virtual void schedule()
-    {
-        while( ! alloc->isReady() )
-        {
-            raft::yield();
-        }
-
-        auto &container( source_kernels.acquire() );
-        for( auto * const k : container )
-        {
-            start_source_kernel_task( k );
-        }
-        source_kernels.release();
-
-        bool keep_going( true );
-        while( keep_going )
-        {
-            while( ! tasks_mutex.try_lock() )
-            {
-                raft::yield();
-            }
-            //exit, we have a lock
-            keep_going = false;
-            TaskSchedMeta* tparent( tasks );
-            //loop over each thread and check if done
-            while( nullptr != tparent->next )
-            {
-                auto *tmeta( reinterpret_cast< OneShotStdSchedMeta* >(
-                            tparent->next ) );
-                if( tmeta->finished )
-                {
-                    tmeta->th.join();
-                    tparent->next = tmeta->next;
-                    delete tmeta;
-                }
-                else /* a task ! finished */
-                {
-                    tparent = tmeta;
-                    keep_going = true;
-                }
-            }
-            //if we're here we have a lock and need to unlock
-            tasks_mutex.unlock();
-            /**
-             * NOTE: added to keep from having to unlock these so frequently
-             * might need to make the interval adjustable dep. on app
-             */
-            std::chrono::milliseconds dura( 3 );
-            std::this_thread::sleep_for( dura );
-        }
-        return;
-    }
-
     virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
         Singleton::allocate()->commit( task );
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            auto *tmeta(
-                    reinterpret_cast< OneShotStdSchedMeta* >(
+            auto *tmeta( static_cast< OneShotStdSchedMeta* >(
                         task->sched_meta ) );
             tmeta->is_source = false; /* stop self_iterate() */
         }
@@ -139,6 +122,16 @@ public:
     }
 
 protected:
+
+    void start_tasks()
+    {
+        auto &container( source_kernels.acquire() );
+        for( auto * const k : container )
+        {
+            start_source_kernel_task( k );
+        }
+        source_kernels.release();
+    }
 
     void start_source_kernel_task( Kernel *kernel )
     {
@@ -156,7 +149,7 @@ protected:
         /* allocate the output buffer */
         Singleton::allocate()->taskInit( task );
 
-        auto *tmeta( new OneShotStdSchedMeta( task, true ) );
+        auto *tmeta( new OneShotSchedMeta( task, true ) );
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
@@ -172,7 +165,7 @@ protected:
 
     void feed_consumers( Task *task )
     {
-        auto *t( reinterpret_cast< OneShotTask* >( task ) );
+        auto *t( static_cast< OneShotTask* >( task ) );
         Kernel *mykernel( task->kernel );
         for( auto &name : t->stream_out->getSent() )
         {
@@ -190,7 +183,7 @@ protected:
 
     void self_iterate( Task *task )
     {
-        auto *tmeta( reinterpret_cast< OneShotStdSchedMeta* >(
+        auto *tmeta( static_cast< OneShotStdSchedMeta* >(
                      task->sched_meta ) );
         if( ! tmeta->is_source )
         {
@@ -220,7 +213,7 @@ protected:
         {
             raft::yield();
         }
-        auto *tmeta( new OneShotStdSchedMeta( tnext ) );
+        auto *tmeta( new OneShotSchedMeta( tnext ) );
         /* insert into tasks linked list */
         tmeta->next = tasks->next;
         tasks->next = tmeta;
