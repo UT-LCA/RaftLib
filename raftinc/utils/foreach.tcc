@@ -51,8 +51,7 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut,
-                                            Task *task ) override
+                                            StreamingData &bufOut ) override
     {
         /* data are already in the FIFO created from the existing buffer */
         return( raft::kstatus::stop );

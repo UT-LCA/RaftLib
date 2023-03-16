@@ -152,6 +152,12 @@ using NoSignalHandlerFoundException
 using DataNotFoundException
     = TemplateRaftException< 10 >;
 
+/**
+ * MethodNotImplementedException -
+ */
+using MethodNotImplementdException
+    = TemplateRaftException< 11 >;
+
 } /** end namespace raft **/
 
 #endif /* END RAFT_EXCEPTIONS_HPP */

@@ -79,6 +79,7 @@ struct OneShotQTSchedMeta : public TaskSchedMeta
     {
         auto * const tmeta( reinterpret_cast< OneShotQTSchedMeta* >( data ) );
         tmeta->task->exe();
+        return 0;
     }
 
     volatile bool is_source;
@@ -167,12 +168,11 @@ protected:
     {
         auto *t( static_cast< OneShotTask* >( task ) );
         Kernel *mykernel( task->kernel );
-        for( auto &name : t->stream_out->getSent() )
+        for( auto &p : t->stream_out->getUsed() )
         {
-            const auto *other_pi( mykernel->output[ name ].other_port );
+            const auto *other_pi( mykernel->output[ p.first ].other_port );
             //TODO: deal with a kernel depends on multiple producers
-            shot_kernel( other_pi->my_kernel, other_pi->my_name,
-                         t->stream_out->get( name ) );
+            shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second );
             DataRef ref;
             while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
             {
@@ -192,7 +192,9 @@ protected:
         start_source_kernel_task( task->kernel );
     }
 
-    void shot_kernel( Kernel *kernel, const port_name_t &dst_name, DataRef &ref )
+    void shot_kernel( Kernel *kernel,
+                      const port_name_t &dst_name,
+                      DataRef &ref )
     {
         OneShotTask *tnext = new OneShotTask();
         tnext->kernel = kernel;
@@ -205,7 +207,7 @@ protected:
         tnext->id = task_id++;
         tasks_mutex.unlock();
 
-        tnext->stream_in = new StreamingData();
+        tnext->stream_in = new StreamingData( tnext, StreamingData::IN );
         tnext->stream_in->set( dst_name, ref );
         Singleton::allocate()->taskInit( tnext );
 

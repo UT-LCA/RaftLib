@@ -47,8 +47,7 @@ public:
 
     // leave compute() been defined in the tests
     //virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-    //                                        raft::StreamingData &bufOut,
-    //                                        raft::Task *task )
+    //                                        raft::StreamingData &bufOut )
 
     virtual bool pop( raft::Task *task, bool dryrun )
     {
@@ -84,8 +83,7 @@ public:
 
     // leave compute() been defined in the tests
     //virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-    //                                        raft::StreamingData &bufOut,
-    //                                        raft::Task *task )
+    //                                        raft::StreamingData &bufOut )
 
     virtual bool pop( raft::Task *task, bool dryrun )
     {
@@ -124,8 +122,7 @@ public:
 
     // leave compute() been defined in the tests
     //virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-    //                                        raft::StreamingData &bufOut,
-    //                                        raft::Task *task )
+    //                                        raft::StreamingData &bufOut )
 
     virtual bool pop( raft::Task *task, bool dryrun )
     {
@@ -180,22 +177,21 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         A a;
         B b;
 #ifdef STRING_NAMES
-        dataIn[ "input_a" ].pop< A >( a, task );
-        dataIn[ "input_b" ].pop< B >( b, task );
+        dataIn[ "input_a" ].pop< A >( a );
+        dataIn[ "input_b" ].pop< B >( b );
         C c( static_cast< C >( a + b ) );
-        bufOut[ "sum" ].push< C >( c, task );
+        bufOut[ "sum" ].push< C >( c );
 #else
-        dataIn[ "input_a"_port ].pop< A >( a, task );
-        dataIn[ "input_b"_port ].pop< B >( b, task );
+        dataIn[ "input_a"_port ].pop< A >( a );
+        dataIn[ "input_b"_port ].pop< B >( b );
         C c( static_cast< C >( a + b ) );
         std::cout << c << std::endl;
-        bufOut[ "sum"_port ].push< C >( c, task );
+        bufOut[ "sum"_port ].push< C >( c );
 #endif
         return( raft::kstatus::proceed );
     }

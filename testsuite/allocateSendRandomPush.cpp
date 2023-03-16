@@ -39,15 +39,14 @@ public:
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-        bufOut[ "y" ].send( task );
+        bufOut[ "y" ].send();
         counter++;
         if( counter == 200 )
         {
@@ -71,20 +70,19 @@ public:
     virtual ~middle() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &mem( dataIn[ "x" ].peek< obj_t >( task ) );
+        auto &mem( dataIn[ "x" ].peek< obj_t >() );
         if( send )
         {
-            bufOut[ "y" ].push( mem, task );
+            bufOut[ "y" ].push( mem );
             send = false;
         }
         else
         {
             send = true;
         }
-        dataIn[ "x" ].recycle( task );
+        dataIn[ "x" ].recycle();
         return( raft::kstatus::proceed );
     }
 private:
@@ -102,16 +100,15 @@ public:
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &mem( dataIn[ "x" ].peek< obj_t >( task ) );
+        auto &mem( dataIn[ "x" ].peek< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             //will fail if we've messed something up
             assert( static_cast<std::size_t>( mem.pad[ i ]) == counter );
         }
-        dataIn[ "x" ].recycle( task );
+        dataIn[ "x" ].recycle();
         counter += 2;
         return( raft::kstatus::proceed );
     }

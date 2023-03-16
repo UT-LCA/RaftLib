@@ -21,6 +21,7 @@
 #define RAFT_UTILS_FILECHUNK_TCC  1
 
 #include <cstddef>
+#include <cstring>
 
 #include "raftinc/utils/chunkiterator.tcc"
 

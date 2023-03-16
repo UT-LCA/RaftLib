@@ -28,6 +28,7 @@
 #include "raftinc/rafttypes.hpp"
 #include "raftinc/task.hpp"
 #include "raftinc/task_impl.hpp"
+#include "raftinc/streamingdata.hpp"
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/schedule/schedule.hpp"
 
@@ -36,26 +37,21 @@ namespace raft
 
 struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 {
-    std::unordered_map< port_name_t, std::vector< FIFO* > > fifos_in;
-    std::unordered_map< port_name_t, std::vector< FIFO* > > fifos_out;
-    std::unordered_map< port_name_t, int > fifos_in_idx;
-    std::unordered_map< port_name_t, int > fifos_out_idx;
-    std::vector< port_name_t > names_in;
-    std::vector< port_name_t > names_out;
     /* the index when there are multiple polling worker clones for a kernel */
     int clone_id;
 
     kstatus::value_t exe()
     {
+        StreamingData dummy_in( this, StreamingData::IN );
+        StreamingData dummy_out( this, StreamingData::OUT );
         Singleton::schedule()->prepare( this );
         while( ! Singleton::schedule()->shouldExit( this ) )
         {
             if( Singleton::schedule()->readyRun( this ) )
             {
                 Singleton::schedule()->precompute( this );
-                StreamingData dummy0, dummy1;
                 const auto sig_status(
-                        (this)->kernel->compute( dummy0, dummy1, this ) );
+                        (this)->kernel->compute( dummy_in, dummy_out ) );
                 Singleton::schedule()->postcompute( this, sig_status );
             }
             Singleton::schedule()->reschedule( this );
@@ -63,42 +59,6 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         Singleton::schedule()->postexit( this );
 
         return kstatus::stop;
-    }
-
-    virtual void pop( const port_name_t &name, DataRef &item )
-    {
-        auto *functor(
-                (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_in[ name ] );
-        functor->pop( fifos[ fifos_in_idx[ name ] ], item );
-        fifos_in_idx[ name ] = ( fifos_in_idx[ name ] + 1 ) % fifos.size();
-    }
-
-    virtual DataRef peek( const port_name_t &name )
-    {
-        auto *functor(
-                (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_in[ name ] );
-        return functor->peek( fifos[ fifos_in_idx[ name ] ] );
-    }
-
-    virtual void recycle( const port_name_t &name )
-    {
-        auto *functor(
-                (this)->kernel->getInput( name ).runtime_info.fifo_functor );
-        auto &fifos( fifos_in[ name ] );
-        functor->recycle( fifos[ fifos_in_idx[ name ] ] );
-        fifos_in_idx[ name ] = ( fifos_in_idx[ name ] + 1 ) % fifos.size();
-    }
-
-    virtual std::vector< port_name_t > &getNamesIn()
-    {
-        return names_in;
-    }
-
-    virtual std::vector< port_name_t > &getNamesOut()
-    {
-        return names_out;
     }
 };
 

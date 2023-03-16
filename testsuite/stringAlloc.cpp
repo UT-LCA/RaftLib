@@ -44,8 +44,7 @@ main()
     p_out print;
 
     auto v_lambda( [&]( raft::StreamingData &dataIn,
-                        raft::StreamingData &bufOut,
-                        raft::Task *task )
+                        raft::StreamingData &bufOut )
     {
         static std::array< std::string, 5 > arr = { "string1", "string2",
                                                     "string3", "string4",
@@ -53,9 +52,9 @@ main()
 
         for( auto i( 0 ); i < 5; i++ )
         {
-            auto &out( bufOut[ "0" ].allocate< type_t >( task ) );
+            auto &out( bufOut[ "0" ].allocate< type_t >() );
             out = arr[ i ];
-            bufOut[ "0" ].send( task );
+            bufOut[ "0" ].send();
         }
         return( raft::kstatus::stop );
     } );

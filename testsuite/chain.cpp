@@ -47,12 +47,11 @@
    p_out print;
 
    auto l_sub( [&]( raft::StreamingData &dataIn,
-                    raft::StreamingData &bufOut,
-                    raft::Task *task )
+                    raft::StreamingData &bufOut )
    {
        std::uint32_t a;
-       dataIn[ "0" ].pop( a, task );
-       bufOut[ "0" ].push( a - 10, task );
+       dataIn[ "0" ].pop( a );
+       bufOut[ "0" ].push( a - 10 );
        return( raft::kstatus::proceed );
    } );
    auto l_pop( [&]( raft::Task *task,

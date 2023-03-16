@@ -35,49 +35,15 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 {
     StreamingData *stream_in;
     StreamingData *stream_out;
-    std::vector< port_name_t > *names_out = nullptr;
 
     kstatus::value_t exe()
     {
         Singleton::schedule()->precompute( this );
         const auto sig_status(
-                (this)->kernel->compute( *stream_in, *stream_out, this ) );
+                (this)->kernel->compute( *stream_in, *stream_out ) );
         Singleton::schedule()->postcompute( this, sig_status );
         Singleton::schedule()->reschedule( this );
         return kstatus::stop;
-    }
-
-    virtual void pop( const port_name_t &name, DataRef &item )
-    {
-        // should have all data satisfied by StreamingData
-        std::cerr << "Unlikely should OneShotTask invoke pop(" <<
-            name << ", &item)\n";
-    }
-
-    virtual DataRef peek( const port_name_t &name )
-    {
-        // should have all data satisfied by StreamingData
-        std::cerr << "Unlikely should OneShotTask invoke peek(" <<
-            name << ")\n";
-        return DataRef();
-    }
-
-    virtual void recycle( const port_name_t &name )
-    {
-        // do nothing, because we have dedicated the data for this task already
-    }
-
-    virtual std::vector< port_name_t > &getNamesOut()
-    {
-        if( nullptr == names_out )
-        {
-            names_out = new std::vector< port_name_t >();
-            for( auto &p : *stream_out )
-            {
-                names_out->push_back( p.first );
-            }
-        }
-        return *names_out;
     }
 };
 

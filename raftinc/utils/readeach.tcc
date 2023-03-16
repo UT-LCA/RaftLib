@@ -64,11 +64,10 @@ public:
     }
 
     virtual kstatus::value_t compute( StreamingData &dataIn,
-                                      StreamingData &bufOut,
-                                      Task *task )
+                                      StreamingData &bufOut )
     {
-        bufOut[ "0" ].allocate< T >( task ) = *begin;
-        bufOut[ "0" ].send( task );
+        bufOut[ "0" ].allocate< T >() = *begin;
+        bufOut[ "0" ].send();
         ++begin;
         return ( end == begin ) ? kstatus::stop : kstatus::proceed;
     }

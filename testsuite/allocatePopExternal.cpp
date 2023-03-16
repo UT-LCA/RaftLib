@@ -45,13 +45,12 @@ public:
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
 #ifdef STRING_NAMES    
-        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
 #else
-        auto &mem( bufOut[ "y"_port ].allocate< obj_t >( task ) );
+        auto &mem( bufOut[ "y"_port ].allocate< obj_t >() );
 #endif
         A.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         for( auto i( 0 ); i < mem.length; i++ )
@@ -59,9 +58,9 @@ public:
             mem.pad[ i ] = static_cast< int >( counter );
         }
 #ifdef STRING_NAMES        
-        bufOut[ "y" ].send( task );
+        bufOut[ "y" ].send();
 #else
-        bufOut[ "y"_port ].send( task );
+        bufOut[ "y"_port ].send();
 #endif
         counter++;
         if( counter == 200 )
@@ -84,19 +83,18 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
 #ifdef STRING_NAMES    
-        auto &val( dataIn[ "x" ].peek< obj_t >( task ) );
+        auto &val( dataIn[ "x" ].peek< obj_t >() );
         B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
-        bufOut[ "y" ].push( val, task );
-        dataIn[ "x" ].recycle( task );
+        bufOut[ "y" ].push( val);
+        dataIn[ "x" ].recycle();
 #else
-        auto &val( dataIn[ "x"_port ].peek< obj_t >( task ) );
+        auto &val( dataIn[ "x"_port ].peek< obj_t >() );
         B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
-        bufOut[ "y"_port ].push( val, task );
-        dataIn[ "x"_port ].recycle( task );
+        bufOut[ "y"_port ].push( val );
+        dataIn[ "x"_port ].recycle();
 #endif
         return( raft::kstatus::proceed );
     }
@@ -113,14 +111,13 @@ public:
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         obj_t mem;
 #ifdef STRING_NAMES        
-        dataIn[ "x" ].pop( mem, task );
+        dataIn[ "x" ].pop( mem );
 #else
-        dataIn[ "x"_port ].pop( mem, task );
+        dataIn[ "x"_port ].pop( mem );
 #endif
         C.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         /** Jan 2016 - otherwise end up with a signed/unsigned compare w/auto **/

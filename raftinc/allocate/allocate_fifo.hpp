@@ -25,6 +25,7 @@
 #ifndef RAFT_ALLOCATE_ALLOCATE_FIFO_HPP
 #define RAFT_ALLOCATE_ALLOCATE_FIFO_HPP  1
 
+#include <vector>
 #include <unordered_set>
 
 #include "raftinc/defs.hpp"
@@ -55,6 +56,52 @@
 
 namespace raft
 {
+
+struct TaskFIFOPort
+{
+    FIFO **fifos;
+    FIFOFunctor *functor;
+    const int nfifos;
+    int idx;
+    TaskFIFOPort( int n ) : nfifos( n )
+    {
+        fifos = new FIFO*[ n ];
+    }
+    /* define the following constructor to allow unordered_map index access */
+    TaskFIFOPort() : nfifos( 0 )
+    {
+        throw MethodNotImplementdException( "TaskFIFOPort()" );
+    }
+    TaskFIFOPort( TaskFIFOPort &&other ) :
+        fifos( other.fifos ), functor( other.functor ), nfifos( other.nfifos ),
+        idx( other.idx )
+    {
+        other.fifos = nullptr;
+    }
+    TaskFIFOPort( const TaskFIFOPort &other ) = delete;
+    ~TaskFIFOPort()
+    {
+        if( nullptr != fifos )
+        {
+            delete[] fifos;
+        }
+    }
+};
+
+struct TaskFIFOAllocMeta : public TaskAllocMeta
+{
+    TaskFIFOAllocMeta() : TaskAllocMeta() {}
+    virtual ~TaskFIFOAllocMeta() = default;
+
+    std::unordered_map< port_name_t, TaskFIFOPort* > name2port_in;
+    std::unordered_map< port_name_t, TaskFIFOPort* > name2port_out;
+
+    /* use vector for faster iterating */
+    std::vector< TaskFIFOPort > ports_in;
+    std::vector< TaskFIFOPort > ports_out;
+
+    TaskFIFOPort *selected;
+};
 
 class AllocateFIFO : public Allocate
 {
@@ -240,65 +287,76 @@ public:
         return true;
     }
 
-    virtual void taskPush( Task *task, const port_name_t &name, DataRef &item )
+    virtual void select( Task *task, const port_name_t &name, bool is_in )
     {
-        auto *functor(
-                task->kernel->getOutput( name ).runtime_info.fifo_functor );
-        FIFO *fifo;
-        if( POLLING_WORKER == task->type )
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        if( is_in )
         {
-            auto *worker( static_cast< PollingWorker* >( task ) );
-            auto &fifos( worker->fifos_out[ name ] );
-            fifo = fifos[ worker->fifos_out_idx[ name ] ];
-            worker->fifos_out_idx[ name ] =
-                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
+            auto iter( tmeta->name2port_in.find( name ) );
+            assert( tmeta->name2port_in.end() != iter );
+            tmeta->selected = iter->second;
         }
-        else /* if( ONE_SHOT == task->type ) */
+        else
         {
-            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
-            fifo = fifos->back();
+            auto iter( tmeta->name2port_out.find( name ) );
+            assert( tmeta->name2port_out.end() != iter );
+            tmeta->selected = iter->second;
         }
-        functor->push( fifo, item );
     }
 
-    virtual DataRef taskAllocate( Task *task, const port_name_t &name )
+    virtual void taskPop( Task *task, DataRef &item )
     {
-        auto *functor(
-                task->kernel->getOutput( name ).runtime_info.fifo_functor );
-        FIFO *fifo;
-        if( POLLING_WORKER == task->type )
-        {
-            auto *worker( static_cast< PollingWorker* >( task ) );
-            auto &fifos( worker->fifos_out[ name ] );
-            fifo = fifos[ worker->fifos_out_idx[ name ] ];
-        }
-        else /* if( ONE_SHOT == task->type ) */
-        {
-            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
-            fifo = fifos->back();
-        }
-        return functor->allocate( fifo );
+        // oneshot task should have all input data satisfied by StreamingData
+        assert( ONE_SHOT != task->type );
+
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *port( tmeta->selected );
+        port->functor->pop( port->fifos[ port->idx ], item );
     }
 
-    virtual void taskSend( Task *task, const port_name_t &name )
+    virtual DataRef taskPeek( Task *task )
     {
-        auto *functor(
-                task->kernel->getOutput( name ).runtime_info.fifo_functor );
-        FIFO *fifo;
-        if( POLLING_WORKER == task->type )
+        // oneshot task should have all input data satisfied by StreamingData
+        assert( ONE_SHOT != task->type );
+
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *port( tmeta->selected );
+        return port->functor->peek( port->fifos[ port->idx ] );
+    }
+
+    virtual void taskRecycle( Task *task )
+    {
+        if( ONE_SHOT != task->type )
         {
-            auto *worker( static_cast< PollingWorker* >( task ) );
-            auto &fifos( worker->fifos_out[ name ] );
-            fifo = fifos[ worker->fifos_out_idx[ name ] ];
-            worker->fifos_out_idx[ name ] =
-                ( worker->fifos_out_idx[ name ] + 1 ) % fifos.size();
+            auto *tmeta(
+                    static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+            auto *port( tmeta->selected );
+            port->functor->recycle( port->fifos[ port->idx ] );
         }
-        else /* if( ONE_SHOT == task->type ) */
-        {
-            auto &fifos( (this)->port_fifo[ &( task->kernel->getOutput( name ) ) ] );
-            fifo = fifos->back();
-        }
-        functor->send( fifo );
+        // else do nothing, b/c we have dedicated the data for this task
+    }
+
+    virtual void taskPush( Task *task, DataRef &item )
+    {
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *port( tmeta->selected );
+        port->functor->push( port->fifos[ port->idx ], item );
+        port->idx = ( port->idx + 1 ) % port->nfifos;
+    }
+
+    virtual DataRef taskAllocate( Task *task )
+    {
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *port( tmeta->selected );
+        return port->functor->allocate( port->fifos[ port->idx ] );
+    }
+
+    virtual void taskSend( Task *task )
+    {
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *port( tmeta->selected );
+        port->functor->send( port->fifos[ port->idx ] );
+        port->idx = ( port->idx + 1 ) % port->nfifos;
     }
 
     virtual DataRef portPop( const PortInfo *pi )
@@ -424,35 +482,37 @@ protected:
         }
 
         assert( POLLING_WORKER == task->type );
-        auto *worker( static_cast< PollingWorker* >( task ) );
+
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         if( null_port_value != name )
         {
-            auto &fifos( worker->fifos_in[ name ] );
-            const int nfifos( fifos.size() );
-            const int idx( worker->fifos_in_idx[ name ] );
+            auto &port( *tmeta->name2port_in[ name ] );
+            auto *fifos( port.fifos );
+            auto &nfifos( port.nfifos );
+            auto &idx( port.idx );
             for( int i( 0 ); nfifos > i; ++i )
             {
                 const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
                 if( size > 0 )
                 {
-                    worker->fifos_in_idx[ name ] = ( idx + i ) % nfifos;
+                    idx = ( idx + i ) % nfifos;
                     return true;
                 }
             }
             return false;
         }
 
-        for( auto &name : worker->names_in )
+        for( auto &port : tmeta->ports_in )
         {
-            auto &fifos( worker->fifos_in[ name ] );
-            const int nfifos( fifos.size() );
-            const int idx( worker->fifos_in_idx[ name ] );
+            auto *fifos( port.fifos );
+            auto &nfifos( port.nfifos );
+            auto &idx( port.idx );
             for( int i( 0 ); nfifos > i; ++i )
             {
                 const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
                 if( size > 0 )
                 {
-                    worker->fifos_in_idx[ name ] = ( idx + i ) % nfifos;
+                    idx = ( idx + i ) % nfifos;
                     return true;
                 }
             }
@@ -585,72 +645,73 @@ protected:
         return buf;
     }
 
-    /**
-     * copy_port_fifos - copy the fifo allocated for the ports as the
-     * fifo for the task.
-     * @param task - raft::Task*
-     * @return StreamingData.
-     */
-    static inline void copy_port_fifos( PollingWorker *worker )
-    {
-        //auto *kernel( worker->kernel );
-        //auto &input_ports( kernel->input );
-        //for( auto &[ name, info ] : input_ports )
-        //{
-        //    worker->fifos_in.insert(
-        //            std::make_pair( name, get_FIFO( info ) ) );
-        //    worker->names_in.push_back( name );
-        //}
-        //auto &output_ports( kernel->output );
-        //for( auto &[ name, info ] : output_ports )
-        //{
-        //    worker->fifos_out.insert(
-        //            std::make_pair( name, get_FIFO( info ) ) );
-        //    worker->names_out.push_back( name );
-        //}
-    }
-
     inline void polling_worker_init( PollingWorker *worker )
     {
         auto *kernel( worker->kernel );
         auto nclones( kernel->getCloneFactor() );
 
+        auto *tmeta( new TaskFIFOAllocMeta() );
+        worker->alloc_meta = tmeta;
+
         auto &input_ports( kernel->input );
+        tmeta->ports_in.reserve( input_ports.size() );
         for( auto &p : input_ports )
         {
             const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
+            const auto fifo_share(
+                    nfifos / nclones +
+                    ( worker->clone_id < int( nfifos % nclones ) ? 1 : 0 ) );
+            tmeta->ports_in.emplace_back( fifo_share );
+            tmeta->name2port_in.emplace( p.first, &tmeta->ports_in.back() );
+            auto &port( tmeta->ports_in.back() );
+            port.idx = 0;
             for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
             {
-                worker->fifos_in[ p.first ].push_back(
-                        port_fifo[ &p.second ]->at( i ) );
+                port.fifos[ port.idx++ ] = port_fifo[ &p.second ]->at( i );
             }
-            worker->fifos_in_idx[ p.first ] = 0;
-            worker->names_in.push_back( p.first );
+            port.idx = 0;
+            port.functor = p.second.runtime_info.fifo_functor;
         }
         auto &output_ports( kernel->output );
+        tmeta->ports_out.reserve( output_ports.size() );
         for( auto &p : output_ports )
         {
             const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
+            const auto fifo_share(
+                    nfifos / nclones +
+                    ( worker->clone_id < int( nfifos % nclones ) ? 1 : 0 ) );
+            tmeta->ports_out.emplace_back( fifo_share );
+            tmeta->name2port_out.emplace( p.first, &tmeta->ports_out.back() );
+            auto &port( tmeta->ports_out.back() );
+            port.idx = 0;
             for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
             {
-                worker->fifos_out[ p.first ].push_back(
-                        port_fifo[ &p.second ]->at( i ) );
+                port.fifos[ port.idx++ ] = port_fifo[ &p.second ]->at( i );
             }
-            worker->fifos_out_idx[ p.first ] = 0;
-            worker->names_out.push_back( p.first );
+            port.idx = 0;
+            port.functor = p.second.runtime_info.fifo_functor;
         }
     }
 
-    static inline void oneshot_init( OneShotTask *oneshot )
+    inline void oneshot_init( OneShotTask *oneshot )
     {
-        oneshot->stream_out = new StreamingData();
+        oneshot->stream_out = new StreamingData( oneshot, StreamingData::OUT );
         auto &output_ports( oneshot->kernel->output );
+
+        auto *tmeta( new TaskFIFOAllocMeta() );
+        oneshot->alloc_meta = tmeta;
 
         for( auto &p : output_ports )
         {
             oneshot->stream_out->set(
                     p.first, get_FIFOFunctor( p.second )->oneshot_allocate() );
             /* TODO: needs to find a place to release the malloced data */
+            tmeta->ports_out.emplace_back( 1 );
+            tmeta->name2port_out.emplace( p.first, &tmeta->ports_out.back() );
+            auto &port( tmeta->ports_out.back() );
+            port.idx = 0;
+            port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
+            port.functor = p.second.runtime_info.fifo_functor;
         }
     }
 
@@ -697,11 +758,12 @@ protected:
      */
     static void polling_worker_invalidate_outputs( PollingWorker *worker )
     {
-        for( auto &name : worker->names_out )
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+        for( auto &port : tmeta->ports_out )
         {
-            for( FIFO *fifo : worker->fifos_out[ name ] )
+            for( int i( 0 ); port.nfifos > i; ++i )
             {
-                fifo->invalidate();
+                port.fifos[ i ]->invalidate();
             }
         }
     }
@@ -720,11 +782,12 @@ protected:
             return true;
         }
 
-        for( auto &name : worker->names_in )
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+        for( auto &port : tmeta->ports_in )
         {
-            for( FIFO *fifo : worker->fifos_in[ name ] )
+            for( int i( 0 ); port.nfifos > i; ++i )
             {
-                if( ! fifo->is_invalid() )
+                if( ! port.fifos[ i ]->is_invalid() )
                 {
                     return true;
                 }

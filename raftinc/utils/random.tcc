@@ -75,12 +75,11 @@ public:
     //CLONE();
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut,
-                                            Task *task )
+                                            StreamingData &bufOut )
     {
         for( auto &name : out_names )
         {
-            bufOut[ name ].push( dist( gen ), task );
+            bufOut[ name ].push( dist( gen ) );
             if( ++count_of_sent >= N )
             {
                 return( raft::kstatus::stop );

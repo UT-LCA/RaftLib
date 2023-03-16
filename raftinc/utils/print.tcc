@@ -132,8 +132,7 @@ public:
      */
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task * task )
+                                            raft::StreamingData &bufOut )
     {
         for( std::size_t index( 0 ); index < (this)->input_port_count; index++ )
         {
@@ -142,9 +141,9 @@ public:
 #else
             const auto name( raft::port_key_name_t( index, std::to_string( index ) ) );
 #endif
-            const auto &data( dataIn[ name ].peek< T >( task ) );
+            const auto &data( dataIn[ name ].peek< T >() );
             *((this)->ofs) << data << delim;
-            dataIn[ name ].recycle( task );
+            dataIn[ name ].recycle();
         }
         return( raft::kstatus::proceed );
     }
@@ -176,8 +175,7 @@ public:
      * @return raft::kstatus::value_t
      */
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         for( std::size_t index( 0 ); index < (this)->input_port_count; index++ )
         {
@@ -186,9 +184,9 @@ public:
 #else
             const auto name( raft::port_key_name_t( index, std::to_string( index ) ) );
 #endif
-            const auto &data( dataIn[ name ].peek< T >( task ) );
+            const auto &data( dataIn[ name ].peek< T >() );
             *((this)->ofs) << data;
-            dataIn[ name ].recycle( task );
+            dataIn[ name ].recycle();
         }
         return( raft::kstatus::proceed );
     }

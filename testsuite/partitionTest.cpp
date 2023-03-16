@@ -20,12 +20,11 @@ main( int argc, char **argv )
 
     using sub = raft::lambdak< std::uint32_t >;
     auto l_sub( []( raft::StreamingData &dataIn,
-                    raft::StreamingData &bufOut,
-                    raft::Task *task ) -> raft::kstatus::value_t
+                    raft::StreamingData &bufOut ) -> raft::kstatus::value_t
     {
         std::uint32_t a;
-        dataIn[ "0" ].pop( a, task );
-        bufOut[ "0" ].push( a - 10, task );
+        dataIn[ "0" ].pop( a );
+        bufOut[ "0" ].push( a - 10 );
         return( raft::kstatus::proceed );
     } );
 

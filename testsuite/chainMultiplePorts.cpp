@@ -48,13 +48,12 @@
      p_out print;
 
      auto  l_add( []( raft::StreamingData &dataIn,
-                      raft::StreamingData &bufOut,
-                      raft::Task *task )
+                      raft::StreamingData &bufOut )
      {
          std::uint32_t a,b;
-         dataIn[ "0" ].pop( a, task );
-         dataIn[ "1" ].pop( b, task );
-         bufOut[ "0" ].push( a + b, task );
+         dataIn[ "0" ].pop( a );
+         dataIn[ "1" ].pop( b );
+         bufOut[ "0" ].push( a + b );
          return( raft::kstatus::proceed );
      } );
 

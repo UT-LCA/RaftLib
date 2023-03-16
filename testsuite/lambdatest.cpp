@@ -18,8 +18,7 @@ main()
             /** output ports     **/ 1,
             /** the compute func **/
         [&]( raft::StreamingData &dataIn,
-             raft::StreamingData &bufOut,
-             raft::Task *task )
+             raft::StreamingData &bufOut )
         {
             UNUSED( dataIn );
             static std::default_random_engine generator;
@@ -28,9 +27,7 @@ main()
             static std::size_t gen_count( 0 );
             if( gen_count++ < 10000 )
             {
-               bufOut[ "0" ].push(
-                  rand_func(),
-                  task );
+               bufOut[ "0" ].push( rand_func() );
                return( raft::kstatus::proceed );
             }
             return( raft::kstatus::stop );

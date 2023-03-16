@@ -57,17 +57,16 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
 #ifndef STRING_NAMES
-        bufOut[ "number_stream"_port ].allocate< T >( task ) =
+        bufOut[ "number_stream"_port ].allocate< T >() =
             static_cast< T >( (this)->count );
-        bufOut[ "number_stream"_port ].send( task );
+        bufOut[ "number_stream"_port ].send();
 #else
-        bufOut[ "number_stream" ].allocate< T >( task ) =
+        bufOut[ "number_stream" ].allocate< T >() =
             static_cast< T >( (this)->count );
-        bufOut[ "number_stream" ].send( task );
+        bufOut[ "number_stream" ].send();
 #endif
         if( count-- > 1 )
         {
@@ -112,8 +111,7 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         char str[ 8 ];
         str[7]='\0';
@@ -122,13 +120,13 @@ public:
             str[ i ] = (char) distrib( gen );
         }
 #ifndef STRING_NAMES
-        bufOut[ "number_stream"_port ].allocate< std::string >( task ) =
+        bufOut[ "number_stream"_port ].allocate< std::string >() =
             static_cast< std::string >( str );
-        bufOut[ "number_stream"_port ].send( task );
+        bufOut[ "number_stream"_port ].send();
 #else
-        bufOut[ "number_stream" ].allocate< std::string >( task ) =
+        bufOut[ "number_stream" ].allocate< std::string >() =
             static_cast< std::string >( str );
-        bufOut[ "number_stream" ].send( task );
+        bufOut[ "number_stream" ].send();
 #endif
         if( count-- > 1 )
         {

@@ -43,9 +43,9 @@ class lambdak : public raft::Kernel
 public:
     typedef std::function< bool ( Task *task, bool dryrun ) > popfunc_t;
     typedef std::function< bool ( Task *task, bool dryrun ) > allocfunc_t;
-    typedef std::function< raft::kstatus::value_t ( StreamingData &dataIn,
-                                                    StreamingData &bufOut,
-                                                    Task *task ) > compfunc_t;
+    typedef std::function<
+        raft::kstatus::value_t ( StreamingData &dataIn,
+                                 StreamingData &bufOut ) > compfunc_t;
     /**
      * constructor -
      * @param   inputs - const std::size_t number of inputs to the kernel
@@ -71,12 +71,10 @@ public:
      * compute - implement the compute function for this kernel
      */
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut,
-                                            Task *task )
+                                            StreamingData &bufOut )
     {
         return( comp_func( dataIn /** input streaming data **/,
-                           bufOut /** output streaming buffer **/,
-                           task /** execution task context **/ ) );
+                           bufOut /** output streaming buffer **/ ) );
     }
 
     /**

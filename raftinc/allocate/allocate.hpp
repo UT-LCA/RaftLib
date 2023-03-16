@@ -23,7 +23,6 @@
 #define RAFT_ALLOCATE_ALLOCATE_HPP  1
 
 #include "raftinc/defs.hpp"
-#include "raftinc/streamingdata.hpp"
 #include "raftinc/exceptions.hpp"
 #include "raftinc/singleton.hpp"
 
@@ -32,6 +31,15 @@ namespace raft
 {
 
 class Task;
+class DataRef;
+class StreamingData;
+class PortInfo;
+
+struct TaskAllocMeta
+{
+    TaskAllocMeta() = default;
+    virtual ~TaskAllocMeta() = default;
+};
 
 class Allocate
 {
@@ -72,11 +80,13 @@ public:
     virtual void invalidateOutputs( Task *task ) = 0;
     virtual bool taskHasInputPorts( Task *task ) = 0;
 
-    virtual void taskPush( Task *task,
-                           const port_name_t &name,
-                           DataRef &item ) = 0;
-    virtual DataRef taskAllocate( Task *task, const port_name_t &name ) = 0;
-    virtual void taskSend( Task *task, const port_name_t &name ) = 0;
+    virtual void select( Task *task, const port_name_t &name, bool is_in ) = 0;
+    virtual void taskPop( Task *task, DataRef &item ) = 0;
+    virtual DataRef taskPeek( Task *task ) = 0;
+    virtual void taskRecycle( Task *task ) = 0;
+    virtual void taskPush( Task *task, DataRef &item ) = 0;
+    virtual DataRef taskAllocate( Task *task ) = 0;
+    virtual void taskSend( Task *task ) = 0;
 
     virtual DataRef portPop( const PortInfo *pi ) = 0;
 

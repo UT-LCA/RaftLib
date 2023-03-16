@@ -26,6 +26,8 @@
 #include "raftinc/exceptions.hpp"
 #include "raftinc/task.hpp"
 #include "raftinc/defs.hpp"
+#include "raftinc/singleton.hpp"
+#include "raftinc/allocate/allocate.hpp"
 
 namespace raft {
 
@@ -58,7 +60,17 @@ private:
 class StreamingData
 {
 public:
-    StreamingData() = default;
+
+    enum Direction
+    {
+        IN,
+        OUT
+    };
+
+    StreamingData( Task *t = nullptr, Direction dir = IN ) :
+        task( t ), direction( dir )
+    {
+    }
 
     template< class T >
     void setT( const port_name_t &name, T &data_ref )
@@ -90,7 +102,11 @@ public:
 
     StreamingData &operator[]( const port_name_t &name )
     {
-        touched.emplace_back( name );
+        iter = store.find( name );
+        if( store.end() == iter )
+        {
+            Singleton::allocate()->select( task, name, IN == direction );
+        }
         return *this;
     }
 
@@ -107,15 +123,13 @@ public:
     }
 
     template< class T >
-    void pop( T &item, Task *task )
+    void pop( T &item )
     {
-        auto &name( touched.back() );
-        auto iter( store.find( name ) );
         if( store.end() == iter )
         {
             DataRef ref;
             ref.set< T >( item );
-            task->pop( name, ref );
+            Singleton::allocate()->taskPop( task, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
@@ -123,73 +137,71 @@ public:
     }
 
     template< class T >
-    T &peek( Task *task )
+    T &peek()
     {
-        auto &name( touched.back() );
-        auto iter( store.find( name ) );
         if( store.end() == iter )
         {
-            return task->peek( name ).get< T >();
+            return Singleton::allocate()->taskPeek( task ).get< T >();
         }
         return iter->second.get< T >();
     }
 
-    void recycle( Task *task )
+    void recycle()
     {
-        task->recycle( touched.back() );
+        Singleton::allocate()->taskRecycle( task );
     }
 
     template< class T >
-    void push( T &&item, Task *task )
+    void push( T &&item )
     {
-        auto &name( touched.back() );
-        auto iter( store.find( name ) );
-        if( store.end() == iter || sent.end() != sent.find( name ) )
+        if( store.end() == iter )
         {
             DataRef ref;
             ref.set< T >( item );
-            //std::cout << task->id << std::endl;
-            task->push( name, ref );
+            Singleton::allocate()->taskPush( task, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
         iter->second.get< T >() = item;
-        sent.insert( name );
+        used.insert( *iter );
+        store.erase( iter );
     }
 
     template< class T >
-    void push( T &item, Task *task )
+    void push( T &item )
     {
-        auto &name( touched.back() );
-        auto iter( store.find( name ) );
-        if( store.end() == iter || sent.end() != sent.find( name ) )
+        if( store.end() == iter )
         {
             DataRef ref;
             ref.set< T >( item );
-            task->push( name, ref );
+            Singleton::allocate()->taskPush( task, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
         iter->second.get< T >() = item;
-        sent.insert( name );
+        used.insert( *iter );
+        store.erase( iter );
     }
 
     template< class T >
-    T &allocate( Task *task )
+    T &allocate()
     {
-        auto &name( touched.back() );
-        auto iter( store.find( name ) );
-        if( store.end() == iter || sent.end() != sent.find( name ) )
+        if( store.end() == iter )
         {
-            return task->allocate( name ).get< T >();
+            return Singleton::allocate()->taskAllocate( task ).get< T >();
         }
         return iter->second.get< T >();
     }
 
-    void send( Task *task )
+    void send()
     {
-        task->send( touched.back() );
-        sent.insert( touched.back() );
+        if( store.end() == iter )
+        {
+            Singleton::allocate()->taskSend( task );
+            return;
+        }
+        used.insert( *iter );
+        store.erase( iter );
     }
 
     std::unordered_map< port_name_t, DataRef >::iterator begin()
@@ -207,15 +219,17 @@ public:
         return store.end() != store.find( name );
     }
 
-    std::unordered_set< port_name_t > &getSent()
+    std::unordered_map< port_name_t, DataRef > &getUsed()
     {
-        return sent;
+        return used;
     }
 
 private:
+    Task *task;
+    Direction direction;
     std::unordered_map< port_name_t, DataRef > store;
-    std::vector< port_name_t > touched;
-    std::unordered_set< port_name_t > sent;
+    std::unordered_map< port_name_t, DataRef >::iterator iter;
+    std::unordered_map< port_name_t, DataRef > used;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

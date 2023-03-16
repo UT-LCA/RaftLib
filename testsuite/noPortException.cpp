@@ -24,16 +24,15 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         i++;
 
         if ( i <= 10 ) 
         {
-            auto &c( bufOut[ "out" ].allocate< obj_t >( task ) );
+            auto &c( bufOut[ "out" ].allocate< obj_t >() );
             c = i;
-            bufOut[ "out" ].send( task );
+            bufOut[ "out" ].send();
         }
         else
         {   
@@ -66,12 +65,11 @@ public:
     }
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &a( dataIn[ "in" ].peek< obj_t >( task ) );
+        auto &a( dataIn[ "in" ].peek< obj_t >() );
         std::cout << a << "\n";
-        dataIn[ "in" ].recycle( task );
+        dataIn[ "in" ].recycle();
         return ( raft::kstatus::proceed );
     }
 };

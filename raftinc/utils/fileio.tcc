@@ -45,18 +45,15 @@ class filereader : public raft::Kernel
 public:
     filereader( const std::string inputfile,
                 const long chunk_offset = 0,
-                const std::size_t n_output_ports = 1,
                 const std::int64_t repetitions = 1
                 ) :
-        Kernel(), chunk_offset( chunk_offset ),
-        output_port_count( n_output_ports )
+        Kernel(), chunk_offset( chunk_offset )
     {
-        using index_type = std::remove_const_t< decltype( n_output_ports ) >;
-        for( index_type index( 0 ); index < n_output_ports; index++ )
-        {
-            /** add a port for each index var, all named "output_#" **/
-            add_output< chunktype >( std::to_string( index ) );
-        }
+#if STRING_NAMES
+        add_output< chunktype >( "0" );
+#else
+        add_output< chunktype >( "0"_port );
+#endif
 
         /** stat file **/
         struct stat st;
@@ -111,59 +108,43 @@ public:
 
     virtual bool allocate( raft::Task *task, bool dryrun )
     {
-        bool ans = false;
-        for( std::size_t index( 0 );
-             index < (this)->output_port_count;
-             index++ )
-        {
 #ifdef STRING_NAMES
-            ans |= task->allocate( std::to_string( index ), dryrun );
+        return task->allocate( "0", dryrun );
 #else
-            ans |= task->allocate(
-                    raft::port_key_name_t( index,
-                                           std::to_string( index ) ), dryrun );
+        return task->allocate( "0"_port, dryrun );
 #endif
-        }
-        return ans;
     }
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
-                                            StreamingData &bufOut,
-                                            Task *task )
+                                            StreamingData &bufOut )
     {
-        //for( auto &[ name, ref ] : bufOut )
-        for( auto &name : task->getNamesOut() )
+        auto &chunk( bufOut[ "0" ].template allocate< chunktype >() );
+        if( init )
         {
-            //auto &chunk( ref.template get< chunktype >() );
-            auto &chunk(
-                    bufOut[ name ].template allocate< chunktype >( task ) );
-            if( init )
-            {
-                fseek( fp, - chunk_offset , SEEK_CUR );
-            }
-            else
-            {
-                init = true;
-            }
-            chunk.start_position = ftell( fp );
-            chunk.index = chunk_index;
-            chunk_index++;
-            const auto chunksize( chunktype::getChunkSize() );
-            const auto num_read(
-               fread( chunk.buffer, sizeof( char ), chunksize - 1 , fp ) );
-            chunk.buffer[ num_read ] = '\0';
-            chunk.length = num_read;
-            static_assert( std::is_signed< decltype( iterations ) >::value,
-                           "iterations must be a signed type" );
-            bufOut[ name ].send( task );
-            if( --iterations <= 0 )
-            {
-                return( kstatus::stop );
-            }
-            if ( 0 == ( iterations % nchunks ) ) {
-                fseek( fp, 0, SEEK_SET );
-                init = false;
-            }
+            fseek( fp, - chunk_offset , SEEK_CUR );
+        }
+        else
+        {
+            init = true;
+        }
+        chunk.start_position = ftell( fp );
+        chunk.index = chunk_index;
+        chunk_index++;
+        const auto chunksize( chunktype::getChunkSize() );
+        const auto num_read(
+           fread( chunk.buffer, sizeof( char ), chunksize - 1 , fp ) );
+        chunk.buffer[ num_read ] = '\0';
+        chunk.length = num_read;
+        static_assert( std::is_signed< decltype( iterations ) >::value,
+                       "iterations must be a signed type" );
+        bufOut[ "0" ].send();
+        if( --iterations <= 0 )
+        {
+            return( kstatus::stop );
+        }
+        if ( 0 == ( iterations % nchunks ) ) {
+            fseek( fp, 0, SEEK_SET );
+            init = false;
         }
         return( kstatus::proceed );
     }
@@ -177,7 +158,6 @@ private:
     std::uint64_t chunk_index = 0;
     offset_type chunk_offset;
     std::int64_t nchunks = 0;
-    std::size_t output_port_count;
 };
 
 } /* end namespace raft */

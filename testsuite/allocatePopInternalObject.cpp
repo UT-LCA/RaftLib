@@ -42,16 +42,15 @@ public:
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
         counter++;
-        bufOut[ "y" ].send( task );
+        bufOut[ "y" ].send();
         if( counter == 200 )
         {
             return( raft::kstatus::stop );
@@ -76,11 +75,10 @@ public:
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         obj_t mem;
-        dataIn[ "x" ].pop( mem, task );
+        dataIn[ "x" ].pop( mem );
 
         using index_type = std::remove_const_t<decltype(mem.length)>;
         for( index_type i( 0 ); i < mem.length; i++ )

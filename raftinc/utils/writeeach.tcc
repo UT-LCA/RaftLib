@@ -62,11 +62,10 @@ public:
     }
 
     virtual kstatus::value_t compute( StreamingData &dataIn,
-                                      StreamingData &bufOut,
-                                      Task *task )
+                                      StreamingData &bufOut )
     {
-        ( *inserter ) = dataIn[ "0" ].peek< T >( task );
-        dataIn[ "0" ].recycle( task );
+        ( *inserter ) = dataIn[ "0" ].peek< T >();
+        dataIn[ "0" ].recycle();
         /** hope the iterator defined overloaded ++ **/
         ++inserter;
         return( kstatus::proceed );

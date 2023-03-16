@@ -55,6 +55,7 @@ struct StdThreadSchedMeta : public TaskSchedMeta
 
     std::thread th;
     /* map every task to a kthread */
+    int8_t run_count;
 };
 
 #if QTHREAD_FOUND
@@ -81,7 +82,10 @@ struct QThreadSchedMeta : public TaskSchedMeta
     {
         auto * const tmeta( reinterpret_cast< QThreadSchedMeta* >( data ) );
         tmeta->task->exe();
+        return 0;
     }
+
+    int8_t run_count;
 };
 #endif
 
@@ -183,8 +187,7 @@ public:
 
     virtual bool readyRun( Task* task )
     {
-        return ( task->kernel->pop( task, true ) &&
-                 task->kernel->allocate( task, true ) );
+        return Singleton::allocate()->getDataIn( task, null_port_value );
     }
 
 
@@ -206,7 +209,12 @@ public:
 
     virtual void reschedule( Task* task )
     {
-        raft::yield();
+        auto *t( static_cast< PollingWorkerSchedMeta* >( task->sched_meta ) );
+        if( 20 <= t->run_count++ )
+        {
+            t->run_count = 0;
+            raft::yield();
+        }
     }
 
     virtual void prepare( Task* task )

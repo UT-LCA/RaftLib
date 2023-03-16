@@ -38,12 +38,11 @@ public:
     virtual ~start() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
-        auto &mem( bufOut[ "y" ].allocate< obj_t >( task ) );
+        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
         mem = counter++;
-        bufOut[ "y" ].send( task );
+        bufOut[ "y" ].send();
         if( counter == 200 )
         {
             return( raft::kstatus::stop );
@@ -67,11 +66,10 @@ public:
     virtual ~last() = default;
 
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
-                                            raft::StreamingData &bufOut,
-                                            raft::Task *task )
+                                            raft::StreamingData &bufOut )
     {
         obj_t in;
-        dataIn[ "x" ].pop( in, task );
+        dataIn[ "x" ].pop( in );
         if( in != counter++ )
         {
             std::cerr << "failed exit\n";
