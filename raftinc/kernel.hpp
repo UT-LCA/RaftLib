@@ -278,6 +278,11 @@ public:
         group_id = g;
     }
 
+    int getGroup() const
+    {
+        return group_id;
+    }
+
     void setCloneFactor( int factor )
     {
         clone_factor = factor;

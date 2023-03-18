@@ -26,6 +26,7 @@
  */
 #include "raftinc/partition/partition.hpp"
 #include "raftinc/partition/partition_basic.hpp"
+#include "raftinc/partition/partition_priority.hpp"
 #if USE_PARTITION
 #include "raftind/partition/partition_scotch.hpp"
 #endif

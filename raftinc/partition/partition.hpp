@@ -41,6 +41,19 @@ protected:
         kernel.setGroup( group_id );
     }
 
+    static int detect_num_groups()
+    {
+        auto *ngroups_env = std::getenv( "RAFT_NUM_GROUPS" );
+        if( ngroups_env != nullptr )
+        {
+            return std::stoi( ngroups_env );
+        }
+        else
+        {
+            return std::thread::hardware_concurrency();
+        }
+    }
+
 }; /** end Partition decl **/
 
 } /** end namespace raft **/

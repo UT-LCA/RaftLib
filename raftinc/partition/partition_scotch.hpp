@@ -46,7 +46,7 @@ public:
 
     virtual DAG &partition( DAG &dag )
     {
-        const auto cores( std::thread::hardware_concurrency() );
+        const auto cores( detect_num_groups() );
         if( simple_check( dag->getKernels(), cores ) )
         {
             return;

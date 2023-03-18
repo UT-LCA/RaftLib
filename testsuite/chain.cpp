@@ -63,9 +63,9 @@
    sub s( 1, 1, l_sub, l_pop );
 
    raft::DAG dag;
-   dag += g >> s >> print;
+   dag += g >> ( s >> print );
 
-   dag.exe< raft::RuntimeFIFO >();
+   dag.exe< raft::RuntimeFIFOGroup >();
 
    return( EXIT_SUCCESS );
  }

@@ -43,7 +43,7 @@ public:
     {
         if( 0 == num_groups )
         {
-            num_groups = std::thread::hardware_concurrency();
+            num_groups = detect_num_groups();
         }
         /* assuming all kernels are chained in a pipeline,
          * get nearby stages into a group. */
@@ -53,7 +53,7 @@ public:
         auto func = [kernels_per_group]( Kernel* k, void *data )
         {
             static int cnt = 0;
-            Partition::set_group_for_kernel( *k, cnt / kernels_per_group );
+            Partition::set_group_for_kernel( *k, 1 + cnt / kernels_per_group );
             cnt++;
         };
 

@@ -67,7 +67,7 @@ struct OneShotQTSchedMeta : public TaskSchedMeta
                        0,
                        0,
                        nullptr,
-                       NO_SHEPHERD,
+                       task->kernel->getGroup() % qthread_num_shepherds(),
                        0 );
     }
 

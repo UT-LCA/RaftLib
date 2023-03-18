@@ -21,6 +21,8 @@
 #ifndef RAFT_KPAIR_HPP
 #define RAFT_KPAIR_HPP  1
 
+#include <algorithm>
+
 #include "raftinc/defs.hpp"
 #include "raftinc/kernelport.hpp"
 
@@ -43,6 +45,7 @@ public:
            ) : src( a ), dst( b ), src_name( pa ), dst_name( pb )
     {
         head = this;
+        priority_factor = 1;
     }
 
     Kpair( Kernel *a,
@@ -57,6 +60,7 @@ public:
     {
         next = &b;
         b.head = this;
+        priority_factor = b.priority_factor + 1;
     }
 
     Kpair( KernelPort &a,
@@ -74,6 +78,7 @@ public:
     {
         next = &b;
         b.head = this;
+        priority_factor = b.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
@@ -83,6 +88,7 @@ public:
     {
         head = a.head;
         a.next = this;
+        priority_factor = a.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
@@ -91,6 +97,7 @@ public:
     {
         head = a.head;
         a.next = this;
+        priority_factor = a.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
@@ -101,6 +108,7 @@ public:
         a.next = this;
         b.head = a.head;
         next = &b;
+        priority_factor = std::max( a.priority_factor, b.priority_factor ) + 1;
     }
 
     Kpair&
@@ -131,6 +139,11 @@ public:
         return( *ptr );
     }
 
+    int getPriorityFactor() const
+    {
+        return priority_factor;
+    }
+
 protected:
     Kpair *next = nullptr;
     Kpair *head = nullptr;
@@ -138,6 +151,10 @@ protected:
     Kernel *dst = nullptr;
     port_name_t src_name = null_port_value;
     port_name_t dst_name = null_port_value;
+
+    int priority_factor;
+    /* a hint from programmer about how heavy the traffic through this
+     * connection would be, with 1 the heaviest, the larger the lighter */
 
     friend Kernel;
     friend DAG;

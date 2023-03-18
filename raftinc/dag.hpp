@@ -23,6 +23,8 @@
 #include <cstdlib>
 #include <cassert>
 #include <sstream>
+#include <map>
+#include <vector>
 
 #include "raftinc/defs.hpp"
 #include "raftinc/kpair.hpp"
@@ -81,12 +83,14 @@ public:
 
         while( nullptr != next )
         {
-            connect2( next->src, next->src_name, next->dst, next->dst_name );
+            auto &pi( connect2( next->src, next->src_name,
+                                next->dst, next->dst_name ) );
             kernels.insert( next->dst );
             if( 0 == next->dst->output.size() )
             {
                 sink_kernels.insert( next->dst );
             }
+            prioritized_ports[ next->getPriorityFactor() ].push_back( &pi );
             next = next->next;
         }
         kernels.insert( pair->head->src );
@@ -111,6 +115,11 @@ public:
         return sink_kernels;
     }
 
+    const std::vector< const PortInfo* > &getPortsAtPriority( int p ) const
+    {
+        return prioritized_ports.at( p );
+    }
+
 protected:
 
     /**
@@ -119,9 +128,10 @@ protected:
      * @param   src_name - const port_name_t&
      * @param   dst - Kernel*
      * @param   dst_name - const port_name_t&
+     * @return  PortInfo& src_port_info, which should have all info of the edge
      */
-    void connect2( Kernel *src, const port_name_t &src_name,
-                   Kernel *dst, const port_name_t &dst_name )
+    const PortInfo &connect2( Kernel *src, const port_name_t &src_name,
+                              Kernel *dst, const port_name_t &dst_name )
     {
         const PortInfo &src_port_info ( src->getOutput( src_name ) );
         const PortInfo &dst_port_info ( dst->getInput( dst_name ) );
@@ -144,6 +154,8 @@ protected:
 
         src->set_output( src_port_info.my_name, dst_port_info );
         dst->set_input( dst_port_info.my_name, src_port_info );
+
+        return src_port_info;
     }
 
     /**
@@ -184,6 +196,7 @@ private:
     kernelset_t kernels;
     kernelset_t source_kernels; // kernels having no import
     kernelset_t sink_kernels; // kernels having no output
+    std::map< int, std::vector< const PortInfo* > > prioritized_ports;
 
 }; /** end DAG decl **/
 
