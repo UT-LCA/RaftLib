@@ -110,11 +110,12 @@ public:
      * items currently in the queue.
      * @return size_t
      */
-    virtual std::size_t size() noexcept
+    virtual std::size_t size( bool is_prod = false ) noexcept
     {
+       auto access_key( is_prod ? Buffer::prod_size : Buffer::cons_size );
        for( ;; )
        {
-          (this)->datamanager.enterBuffer( Buffer::size );
+          (this)->datamanager.enterBuffer( access_key );
           if( (this)->datamanager.notResizing() )
           {
              auto * const buff_ptr( (this)->datamanager.get() );
@@ -129,7 +130,7 @@ TOP:
                 /** expect most of the time to be full **/
                 if( R_LIKELY( wrap_read < wrap_write ) )
                 {
-                   (this)->datamanager.exitBuffer( Buffer::size );
+                   (this)->datamanager.exitBuffer( access_key );
                    return( buff_ptr->max_cap );
                 }
                 else if( wrap_read > wrap_write )
@@ -147,24 +148,24 @@ TOP:
                 }
                 else
                 {
-                   (this)->datamanager.exitBuffer( Buffer::size );
+                   (this)->datamanager.exitBuffer( access_key );
                    return( 0 );
                 }
              }
              else if( rpt < wpt )
              {
-                (this)->datamanager.exitBuffer( Buffer::size );
+                (this)->datamanager.exitBuffer( access_key );
                 return( wpt - rpt );
              }
              else if( rpt > wpt )
              {
-                (this)->datamanager.exitBuffer( Buffer::size );
+                (this)->datamanager.exitBuffer( access_key );
                 return( buff_ptr->max_cap - rpt + wpt );
              }
-             (this)->datamanager.exitBuffer( Buffer::size );
+             (this)->datamanager.exitBuffer( access_key );
              return( 0 );
           }
-          (this)->datamanager.exitBuffer( Buffer::size );
+          (this)->datamanager.exitBuffer( access_key );
           raft::yield();
        } /** end for **/
        return( 0 ); /** keep some compilers happy **/
@@ -179,7 +180,7 @@ TOP:
      */
     virtual std::size_t space_avail()
     {
-        return( (this)->datamanager.get()->max_cap - size() );
+        return( (this)->datamanager.get()->max_cap - size( true ) );
     }
 
 

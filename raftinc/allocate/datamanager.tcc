@@ -87,21 +87,16 @@ public:
        * if all fifo functions have completed
        * their operations.
        */
-      auto allclear( []( Buffer::ThreadAccess * const thread_access,
-                         std::atomic< std::uint64_t >  * checking_size ) noexcept -> bool
+      auto allclear( []( Buffer::ThreadAccess * const thread_access
+                       ) noexcept -> bool
       {
          assert( thread_access != nullptr );
-         assert( checking_size != nullptr );
          for( int i( 0 ); i < 2; i++ )
          {
             if( thread_access[ i ].whole != 0 )
             {
                return( false );
             }
-         }
-         if( checking_size->load( std::memory_order_relaxed ) != 0 )
-         {
-            return( false );
          }
          return( true );
       } );
@@ -145,7 +140,7 @@ public:
          /** set resizing global flag **/
          resizing = true;
          /** see if everybody is done with the current buffer **/
-         if( allclear( thread_access, &checking_size ) )
+         if( allclear( thread_access ) )
          {
             /** check to see if the state of the buffer is good **/
             if( buffercondition( old_buffer ) )
@@ -196,8 +191,7 @@ public:
       /** see lambda below **/
       set_helper( key,
                   static_cast< Buffer::key_t >( 1 ),
-                  thread_access,
-                  &checking_size );
+                  thread_access );
    }
 
    /**
@@ -211,8 +205,7 @@ public:
       /** see lambda below **/
       set_helper( key,
                   static_cast< Buffer::key_t >( 0 ),
-                  thread_access,
-                  &checking_size );
+                  thread_access );
    }
 
    /**
@@ -234,22 +227,20 @@ private:
 
    /** defined in threadaccess.hpp **/
    Buffer::ThreadAccess *thread_access = nullptr;
-
-   std::atomic< std::uint64_t >  checking_size = { 0 };
+   /* replace checking_size with prod_size, cons_size flags in thread_access */
 
    static inline void set_helper( const Buffer::access_key key,
                                   const Buffer::key_t      val,
-                                  Buffer::ThreadAccess *thread_access,
-                                  std::atomic<
-                                    std::uint64_t > * const checking_size ) noexcept
+                                  Buffer::ThreadAccess *thread_access
+                                  ) noexcept
    {
       assert( thread_access != nullptr );
-      assert( checking_size != nullptr );
 
       switch( key )
       {
          case( Buffer::allocate ):
          case( Buffer::allocate_range ):
+         case( Buffer::prod_size ):
          case( Buffer::push ):
          {
             thread_access[ 0 ].flag[ key ] = val;
@@ -258,21 +249,9 @@ private:
          case( Buffer::recycle ):
          case( Buffer::pop ):
          case( Buffer::peek ):
+         case( Buffer::cons_size ):
          {
             thread_access[ 1 ].flag[ key ] = val;
-         }
-         break;
-         case( Buffer::size ):
-         {
-            /** this one has to be atomic, multiple updaters **/
-            if( val == 0 )
-            {
-                checking_size->fetch_sub( 1, std::memory_order_relaxed );
-            }
-            else
-            {
-                checking_size->fetch_add( 1, std::memory_order_relaxed );
-            }
          }
          break;
          default:

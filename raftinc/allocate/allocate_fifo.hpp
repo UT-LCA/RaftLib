@@ -90,7 +90,8 @@ struct TaskFIFOPort
 
 struct TaskFIFOAllocMeta : public TaskAllocMeta
 {
-    TaskFIFOAllocMeta() : TaskAllocMeta() {}
+    TaskFIFOAllocMeta() :
+        TaskAllocMeta(), selected_in( nullptr ), selected_out( nullptr ) {}
     virtual ~TaskFIFOAllocMeta() = default;
 
     std::unordered_map< port_name_t, TaskFIFOPort* > name2port_in;
@@ -100,7 +101,8 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
     std::vector< TaskFIFOPort > ports_in;
     std::vector< TaskFIFOPort > ports_out;
 
-    TaskFIFOPort *selected;
+    TaskFIFOPort *selected_in;
+    TaskFIFOPort *selected_out;
 };
 
 class AllocateFIFO : public Allocate
@@ -294,13 +296,13 @@ public:
         {
             auto iter( tmeta->name2port_in.find( name ) );
             assert( tmeta->name2port_in.end() != iter );
-            tmeta->selected = iter->second;
+            tmeta->selected_in = iter->second;
         }
         else
         {
             auto iter( tmeta->name2port_out.find( name ) );
             assert( tmeta->name2port_out.end() != iter );
-            tmeta->selected = iter->second;
+            tmeta->selected_out = iter->second;
         }
     }
 
@@ -310,7 +312,8 @@ public:
         assert( ONE_SHOT != task->type );
 
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( tmeta->selected );
+        auto *port( nullptr == tmeta->selected_in ?
+                    &tmeta->ports_in[ 0 ] : tmeta->selected_in );
         port->functor->pop( port->fifos[ port->idx ], item );
     }
 
@@ -320,7 +323,8 @@ public:
         assert( ONE_SHOT != task->type );
 
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( tmeta->selected );
+        auto *port( nullptr == tmeta->selected_in ?
+                    &tmeta->ports_in[ 0 ] : tmeta->selected_in );
         return port->functor->peek( port->fifos[ port->idx ] );
     }
 
@@ -330,7 +334,8 @@ public:
         {
             auto *tmeta(
                     static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-            auto *port( tmeta->selected );
+            auto *port( nullptr == tmeta->selected_in ?
+                        &tmeta->ports_in[ 0 ] : tmeta->selected_in );
             port->functor->recycle( port->fifos[ port->idx ] );
         }
         // else do nothing, b/c we have dedicated the data for this task
@@ -339,7 +344,8 @@ public:
     virtual void taskPush( Task *task, DataRef &item )
     {
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( tmeta->selected );
+        auto *port( nullptr == tmeta->selected_out ?
+                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->push( port->fifos[ port->idx ], item );
         port->idx = ( port->idx + 1 ) % port->nfifos;
     }
@@ -347,14 +353,16 @@ public:
     virtual DataRef taskAllocate( Task *task )
     {
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( tmeta->selected );
+        auto *port( nullptr == tmeta->selected_out ?
+                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         return port->functor->allocate( port->fifos[ port->idx ] );
     }
 
     virtual void taskSend( Task *task )
     {
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( tmeta->selected );
+        auto *port( nullptr == tmeta->selected_out ?
+                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->send( port->fifos[ port->idx ] );
         port->idx = ( port->idx + 1 ) % port->nfifos;
     }
@@ -474,16 +482,15 @@ protected:
     bool task_has_input_data( Task *task,
                               const port_name_t &name = null_port_value )
     {
-        auto &port_list( task->kernel->input );
-        if( 0 == port_list.size() )
+        assert( POLLING_WORKER == task->type );
+
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        if( 0 == tmeta->ports_in.size() )
         {
            /** only output ports, keep calling till exits **/
            return( true );
         }
 
-        assert( POLLING_WORKER == task->type );
-
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         if( null_port_value != name )
         {
             auto &port( *tmeta->name2port_in[ name ] );
@@ -672,6 +679,12 @@ protected:
             port.idx = 0;
             port.functor = p.second.runtime_info.fifo_functor;
         }
+        // preselect to avoid indexing with string
+        if( 1 == tmeta->ports_in.size() )
+        {
+            tmeta->selected_in = &tmeta->ports_in[ 0 ];
+        }
+
         auto &output_ports( kernel->output );
         tmeta->ports_out.reserve( output_ports.size() );
         for( auto &p : output_ports )
@@ -690,6 +703,11 @@ protected:
             }
             port.idx = 0;
             port.functor = p.second.runtime_info.fifo_functor;
+        }
+        // preselect to avoid indexing with string
+        if( 1 == tmeta->ports_out.size() )
+        {
+            tmeta->selected_out = &tmeta->ports_out[ 0 ];
         }
     }
 
@@ -776,13 +794,13 @@ protected:
      */
     static bool polling_worker_has_input_ports( PollingWorker *worker )
     {
-        if( 0 == worker->kernel->input.size() )
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+        if( 0 == tmeta->ports_in.size() )
         {
             /* let the source polling worker loop until the stop signal */
             return true;
         }
 
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
         for( auto &port : tmeta->ports_in )
         {
             for( int i( 0 ); port.nfifos > i; ++i )

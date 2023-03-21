@@ -46,6 +46,7 @@ struct StdThreadSchedMeta : public TaskSchedMeta
         th( [ & ](){ (this)->task->sched_meta = this;
                      (this)->task->exe(); } )
     {
+        run_count = 0;
     }
 
     virtual ~StdThreadSchedMeta()
@@ -63,6 +64,7 @@ struct QThreadSchedMeta : public TaskSchedMeta
 {
     QThreadSchedMeta( Task *the_task ) : TaskSchedMeta( the_task )
     {
+        run_count = 0;
         task->sched_meta = this;
         qthread_spawn( QThreadSchedMeta::run,
                        ( void* ) this,
@@ -210,7 +212,7 @@ public:
     virtual void reschedule( Task* task )
     {
         auto *t( static_cast< PollingWorkerSchedMeta* >( task->sched_meta ) );
-        if( 20 <= t->run_count++ )
+        if( 64 <= ++t->run_count )
         {
             t->run_count = 0;
             raft::yield();

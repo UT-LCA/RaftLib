@@ -312,7 +312,7 @@ public:
      * size - returns the current size of this FIFO
      * @return  std::size_t
      */
-    virtual std::size_t size() = 0;
+    virtual std::size_t size( bool is_prod = false ) = 0;
 
     /**
      * space_avail - convenience function to get the current

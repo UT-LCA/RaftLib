@@ -70,7 +70,7 @@ public:
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,
                                             StreamingData &bufOut )
     {
-        auto &chunk( dataIn[ "0" ].peek< T >() );
+        auto &chunk( dataIn.peek< T >() );
         auto it( chunk.begin() );
         do
         {
@@ -80,7 +80,7 @@ public:
             {
                 const std::size_t loc( it.location() + chunk.start_position );
                 const std::size_t end( loc + term_length );
-                bufOut[ "1" ].push< match_t >( std::make_pair( loc, end ) );
+                bufOut.push< match_t >( std::make_pair( loc, end ) );
                 it += 1;
             }
             else
@@ -89,7 +89,7 @@ public:
             }
         }
         while( true );
-        dataIn[ "0" ].recycle();
+        dataIn.recycle();
         return( raft::kstatus::proceed );
     }
 private:

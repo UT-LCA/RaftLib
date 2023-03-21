@@ -100,6 +100,13 @@ public:
         return store[ name ];
     }
 
+    StreamingData &select( const port_name_t &name )
+    {
+        iter = store.find( name );
+        Singleton::allocate()->select( task, name, IN == direction );
+        return *this;
+    }
+
     StreamingData &operator[]( const port_name_t &name )
     {
         iter = store.find( name );

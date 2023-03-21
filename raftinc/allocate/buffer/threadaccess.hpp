@@ -37,11 +37,12 @@ using key_t = byte_t;
  */
 enum access_key : key_t { allocate       = 0,
                           allocate_range = 1,
+                          prod_size      = 2,
                           push           = 3,
                           recycle        = 4,
                           pop            = 5,
                           peek           = 6,
-                          size           = 7,
+                          cons_size      = 7,
                           N };
 
 struct ALIGN( L1D_CACHE_LINE_SIZE ) ThreadAccess
