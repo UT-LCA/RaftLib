@@ -27,7 +27,7 @@
 #include <string>
 
 #if (! defined STRING_NAMES) || (STRING_NAMES == 0)
-#include "hh.hpp"
+#include "raftinc/hh.hpp"
 #endif
 
 namespace raft
@@ -49,59 +49,39 @@ using kernelset_t = std::unordered_set< Kernel* >;
  * name collision with the 64b version, however, it's incredibly
  * unlikely that this would occur.
  */
-#ifdef STRING_NAMES
+#if STRING_NAMES
     using port_name_t = std::string;
     using port_key_t = std::string;
-    const static raft::port_name_t null_port_value = "";
+    const static raft::port_key_t null_port_value = "";
+
 #else
-    /**
-     * set max length of the string for the fixed length representation
-     * of the port name, will be used for debug only, doesn't really
-     * constrain the length used by programmers when typing port names.
-     */
-    const static std::uint32_t  port_name_max_length = 64;
     /**
      * define the type of the port key, this is the value typed in by the
      * programmer to name ports. From the programmer perspective it'll look
      * like a string.
      */
-    using port_name_t = highway_hash::hash_t::val_type;
+    using port_name_t = highway_hash::easy_t;
+    using port_key_t = highway_hash::hash_t::val_type;
 
-    template < std::size_t N > using name_struct_t = highway_hash::data_t< N >;
     /**
      * just like the string, we need a value for uninitialized port
      * types.
      */
-    const static raft::port_name_t null_port_value =
-        std::numeric_limits< raft::port_name_type >::max();
+    const static raft::port_key_t null_port_value =
+        std::numeric_limits< raft::port_key_t >::max();
+    /**
+     * set max length of the string for the fixed length representation
+     * of the port name, will be used for debug only, doesn't really
+     * constrain the length used by programmers when typing port names.
+     */
+    //const static std::uint32_t  port_name_max_length = 64;
     /**
      * fixed length name representation containing both the hash value
      * and the string name of the hash (although it is truncated to the
      * max selected length above.
      */
-    using port_key_t = highway_hash::data_fixed_t< raft::port_name_max_length >;
+    //using port_key_t = highway_hash::data_fixed_t< raft::port_name_max_length >;
 
-    /**
-     * use this to get a constexpr 64b unsigned hash
-     * of a string. Must compile with C++20 for this to
-     * work given it requires return type template type
-     * deduction for user-defined string literals.
-     * e.g. "foobar"_port, hashes the string at compile
-     * time. Currently only g++ has this capability, maybe
-     * the latest head of clang, apple clang does not.
-     * The return type is a struct with the string,
-     * the length, and the hash value. e.g.
-     * auto data( "foobar"_port); then the field data.val
-     * contains your hash.
-     */
-    template < raft::name_struct_t port_name >
-    static
-    constexpr
-    auto
-    operator""_port()
-    {
-        return( port_name );
-    }
 #endif
 
 namespace order
@@ -148,4 +128,36 @@ enum value_t : std::uint8_t {
 } /** end namespace signal **/
 
 } /** end namespace raft **/
+
+
+#if STRING_NAMES
+static
+raft::port_key_t
+operator""_port( const char *input, std::size_t len )
+{
+    return( std::string( input ) );
+}
+#else
+/**
+ * use this to get a constexpr 64b unsigned hash
+ * of a string. Must compile with C++17 or higher for
+ * this to work given it involves std::array operators
+ * in constexpr functions.
+ * e.g. "foobar"_port, hashes the string at compile
+ * time. Currently only g++ has this capability, maybe
+ * the latest head of clang, apple clang does not.
+ * The return type is a struct with the string,
+ * the length, and the hash value. e.g.
+ * auto data( "foobar"_port); then the field data.val
+ * contains your hash.
+ */
+static
+constexpr
+highway_hash::easy_t
+operator""_port( const char *input, std::size_t len )
+{
+    return( highway_hash::easy_t( input, len ) );
+}
+#endif
+
 #endif /* END RAFT_RAFTTYPES_HPP */

@@ -42,20 +42,24 @@ template< int N = 0 >
 struct KernelPortTemplate
 {
     Kernel *kernel;
-    std::stack< port_name_t > portnames;
+    std::stack< port_key_t > portnames;
     KernelPortTemplate() : kernel( nullptr )
     {
     }
-    KernelPortTemplate( Kernel *k, const port_name_t &p ) : kernel( k )
+    KernelPortTemplate( Kernel *k, const port_key_t &p ) : kernel( k )
     {
         portnames.push( p );
     }
     KernelPortTemplate &operator[]( const port_name_t &p )
     {
+#if STRING_NAMES
         portnames.push( p );
+#else
+        portnames.push( p.val );
+#endif
         return *this;
     }
-    port_name_t pop_name()
+    port_key_t pop_name()
     {
         if( 0 == portnames.size() )
         {
@@ -63,7 +67,7 @@ struct KernelPortTemplate
         }
         else
         {
-            port_name_t ans = portnames.top();
+            port_key_t ans = portnames.top();
             portnames.pop();
             return ans;
         }

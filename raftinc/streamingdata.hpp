@@ -73,57 +73,78 @@ public:
     }
 
     template< class T >
-    void setT( const port_name_t &name, T &data_ref )
+    void setT( const port_key_t &name, T &data_ref )
     {
         store.insert( std::make_pair( name, DataRef() ) );
         store[ name ].set< T >( data_ref );
     }
 
     template< class T >
-    T &getT( const port_name_t &name )
+    T &getT( const port_key_t &name )
     {
         return store[ name ].get< T >();
     }
 
-    void set( const port_name_t &name, const DataRef &ref )
+    void set( const port_key_t &name, const DataRef &ref )
     {
         store.insert( std::make_pair( name, ref ) );
     }
 
-    void set( const port_name_t &name, DataRef &&ref )
+    void set( const port_key_t &name, DataRef &&ref )
     {
         store.insert( std::make_pair( name, ref ) );
     }
 
-    DataRef &get( const port_name_t &name )
+    DataRef &get( const port_key_t &name )
     {
         return store[ name ];
     }
 
     StreamingData &select( const port_name_t &name )
     {
+#if STRING_NAMES
         iter = store.find( name );
         Singleton::allocate()->select( task, name, IN == direction );
+#else
+        iter = store.find( name.val );
+        Singleton::allocate()->select( task, name.val, IN == direction );
+#endif
         return *this;
     }
 
     StreamingData &operator[]( const port_name_t &name )
     {
+#if STRING_NAMES
         iter = store.find( name );
+#else
+        iter = store.find( name.val );
+#endif
         if( store.end() == iter )
         {
+#if STRING_NAMES
             Singleton::allocate()->select( task, name, IN == direction );
+#else
+            Singleton::allocate()->select( task, name.val, IN == direction );
+#endif
         }
         return *this;
     }
 
     StreamingData &at( const port_name_t &name )
     {
+#if STRING_NAMES
         auto iter( store.find( name ) );
+#else
+        auto iter( store.find( name.val ) );
+#endif
         if( store.end() == iter )
         {
             std::stringstream ss;
+#if STRING_NAMES
             ss << "Data not found for " << name << std::endl;
+#else
+            ss << "Data not found for " << name.val << std::endl;
+#endif
             throw DataNotFoundException( ss.str() );
         }
         return this->operator[]( name );
@@ -211,22 +232,22 @@ public:
         store.erase( iter );
     }
 
-    std::unordered_map< port_name_t, DataRef >::iterator begin()
+    std::unordered_map< port_key_t, DataRef >::iterator begin()
     {
         return store.begin();
     }
 
-    std::unordered_map< port_name_t, DataRef >::iterator end()
+    std::unordered_map< port_key_t, DataRef >::iterator end()
     {
         return store.end();
     }
 
-    bool has( const port_name_t &name ) const
+    bool has( const port_key_t &name ) const
     {
         return store.end() != store.find( name );
     }
 
-    std::unordered_map< port_name_t, DataRef > &getUsed()
+    std::unordered_map< port_key_t, DataRef > &getUsed()
     {
         return used;
     }
@@ -234,9 +255,9 @@ public:
 private:
     Task *task;
     Direction direction;
-    std::unordered_map< port_name_t, DataRef > store;
-    std::unordered_map< port_name_t, DataRef >::iterator iter;
-    std::unordered_map< port_name_t, DataRef > used;
+    std::unordered_map< port_key_t, DataRef > store;
+    std::unordered_map< port_key_t, DataRef >::iterator iter;
+    std::unordered_map< port_key_t, DataRef > used;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

@@ -41,12 +41,12 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y"_port ].allocate< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-        bufOut[ "y" ].send();
+        bufOut[ "y"_port ].send();
         counter++;
         if( counter == 200 )
         {
@@ -72,17 +72,17 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &mem( dataIn[ "x" ].peek< obj_t >() );
+        auto &mem( dataIn[ "x"_port ].peek< obj_t >() );
         if( send )
         {
-            bufOut[ "y" ].push( mem );
+            bufOut[ "y"_port ].push( mem );
             send = false;
         }
         else
         {
             send = true;
         }
-        dataIn[ "x" ].recycle();
+        dataIn[ "x"_port ].recycle();
         return( raft::kstatus::proceed );
     }
 private:
@@ -102,13 +102,13 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &mem( dataIn[ "x" ].peek< obj_t >() );
+        auto &mem( dataIn[ "x"_port ].peek< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             //will fail if we've messed something up
             assert( static_cast<std::size_t>( mem.pad[ i ]) == counter );
         }
-        dataIn[ "x" ].recycle();
+        dataIn[ "x"_port ].recycle();
         counter += 2;
         return( raft::kstatus::proceed );
     }

@@ -3,7 +3,7 @@
  * @author: Qinzhe Wu
  * @version: Thu Mar 02 20:31:00 2023
  *
- * Copyright 2023 Qinzhe Wu
+ * Copyright 2023 The Regents of the University of Texas
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,13 +43,25 @@ main()
 
     val2.set< type0_t >( val0 );
 
-    sd.setT< type0_t >( "int32_t", val0 );
-    sd.setT< type1_t >( "char[16]", val1 );
-    sd.setT< type2_t >( "DataRef", val2 );
+#if STRING_NAMES
+    sd.setT< type0_t >( "int32_t"_port, val0 );
+    sd.setT< type1_t >( "char[16]"_port, val1 );
+    sd.setT< type2_t >( "DataRef"_port, val2 );
+#else
+    sd.setT< type0_t >( "int32_t"_port.val, val0 );
+    sd.setT< type1_t >( "char[16]"_port.val, val1 );
+    sd.setT< type2_t >( "DataRef"_port.val, val2 );
+#endif
 
-    auto &ref0( sd.getT< type0_t >( "int32_t" ) );
-    auto &ref1( sd.getT< type1_t >( "char[16]" ) );
-    auto &ref2( sd.getT< type2_t >( "DataRef" ) );
+#if STRING_NAMES
+    auto &ref0( sd.getT< type0_t >( "int32_t"_port ) );
+    auto &ref1( sd.getT< type1_t >( "char[16]"_port ) );
+    auto &ref2( sd.getT< type2_t >( "DataRef"_port ) );
+#else
+    auto &ref0( sd.getT< type0_t >( "int32_t"_port.val ) );
+    auto &ref1( sd.getT< type1_t >( "char[16]"_port.val ) );
+    auto &ref2( sd.getT< type2_t >( "DataRef"_port.val ) );
+#endif
     auto &ref20( ref2.get< type0_t >() );
 
     if( typeid( val0 ) != typeid( ref0 ) ||

@@ -62,7 +62,11 @@ class Kernel
                           PORTNAME &&portname,
                           PORTNAMES&&... portnames )
     {
+#if STRING_NAMES
         kernel.template add_port< T >( port, portname );
+#else
+        kernel.template add_port< T >( port, portname.val );
+#endif
         add_port_helper< T, K, P, PORTNAMES... >(
                 kernel, port, std::forward< PORTNAMES >( portnames )... );
     }
@@ -159,7 +163,11 @@ public:
      */
     KernelPort &operator []( const port_name_t &&portname )
     {
+#if STRING_NAMES
         auto *ptr( new KernelPort( this, portname ) );
+#else
+        auto *ptr( new KernelPort( this, portname.val ) );
+#endif
         return( *ptr );
     }
 
@@ -213,7 +221,7 @@ public:
      * PORTS - input and output, use these to specify the connections
      * with other kernels.
      */
-    using port_map_t = std::unordered_map< port_name_t, PortInfo >;
+    using port_map_t = std::unordered_map< port_key_t, PortInfo >;
     port_map_t input;
     port_map_t output;
 
@@ -295,13 +303,34 @@ public:
 
     const PortInfo &getInput( const port_name_t &name )
     {
+#if STRING_NAMES
         return get_port( (this)->input, name );
+#else
+        return get_port( (this)->input, name.val );
+#endif
     }
 
     const PortInfo &getOutput( const port_name_t &name )
     {
+#if STRING_NAMES
         return get_port( (this)->output, name );
+#else
+        return get_port( (this)->output, name.val );
+#endif
     }
+
+#if STRING_NAMES
+#else
+    const PortInfo &getInput( const port_key_t &key )
+    {
+        return get_port( (this)->input, key );
+    }
+
+    const PortInfo &getOutput( const port_key_t &key )
+    {
+        return get_port( (this)->output, key );
+    }
+#endif
 
     trigger::value_t sched_trigger = trigger::any_port;
 
@@ -351,10 +380,10 @@ protected:
      * get_port - get the port info with the given name.
      * Function throw an exception if no port found.
      * @param   port - port_map_t&
-     * @param   port_name - const port_name_t&
+     * @param   port_name - const port_key_t&
      */
     static PortInfo &get_port( port_map_t &port,
-                               const port_name_t &name )
+                               const port_key_t &name )
     {
         if( null_port_value == name )
         {
@@ -386,10 +415,10 @@ private:
      * given.  Function throw an exception if the port
      * already exists.
      * @param   port - port_map_t&
-     * @param   port_name - const port_name_t&
+     * @param   port_name - const port_key_t&
      */
     template < class T >
-    void add_port( port_map_t &port, const port_name_t &portname )
+    void add_port( port_map_t &port, const port_key_t &portname )
     {
         if( port.end() != port.find( portname ) )
         {
@@ -426,10 +455,10 @@ private:
      * essentially bind two ports. Function throw an exception if the port
      * already connect.
      * @param   port - port_map_t&
-     * @param   port_name - const port_name_t&
+     * @param   port_name - const port_key_t&
      * @param   other - const PortInfo&
      */
-    static void set_port( port_map_t &port, const port_name_t &name,
+    static void set_port( port_map_t &port, const port_key_t &name,
                           const PortInfo &other )
     {
         PortInfo &p( port[ name ] );
@@ -445,10 +474,10 @@ private:
     /**
      * set_input - wrapper of set_port for input ports.
      * Function throw an exception if the port already connect.
-     * @param   port_name - const port_name_t&
+     * @param   port_name - const port_key_t&
      * @param   other - const PortInfo&
      */
-    void set_input( const port_name_t &name, const PortInfo &other )
+    void set_input( const port_key_t &name, const PortInfo &other )
     {
         set_port( input, name, other );
     }
@@ -456,10 +485,10 @@ private:
     /**
      * set_output - wrapper of set_port for output ports.
      * Function throw an exception if the port already connect.
-     * @param   port_name - const port_name_t&
+     * @param   port_name - const port_key_t&
      * @param   other - const PortInfo&
      */
-    void set_output( const port_name_t &name, const PortInfo &other )
+    void set_output( const port_key_t &name, const PortInfo &other )
     {
         set_port( output, name, other );
     }

@@ -193,7 +193,7 @@ protected:
     }
 
     void shot_kernel( Kernel *kernel,
-                      const port_name_t &dst_name,
+                      const port_key_t &dst_name,
                       DataRef &ref )
     {
         OneShotTask *tnext = new OneShotTask();

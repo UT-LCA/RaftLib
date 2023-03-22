@@ -57,11 +57,11 @@ main()
     auto v_lambda( [&]( raft::StreamingData &dataIn,
                         raft::StreamingData &bufOut )
     {
-        auto &out( bufOut[ "0" ].allocate< type_t >() );
+        auto &out( bufOut[ "0"_port ].allocate< type_t >() );
         out.push_back( 1 );
         out.push_back( 2 );
         out.push_back( 3 );
-        bufOut[ "0" ].send();
+        bufOut[ "0"_port ].send();
         return( raft::kstatus::stop );
     } );
     lambda_kernel s( 0, 1, v_lambda );

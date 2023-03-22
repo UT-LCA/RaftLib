@@ -20,7 +20,7 @@ class Sum : public raft::test::sum< A, B, C >
 public:
     Sum() : raft::test::sum< A, B, C >()
     {
-        (this)->template add_input< A >( "fail" );
+        (this)->template add_input< A >( "fail"_port );
     }
 
 };
@@ -44,8 +44,8 @@ main( int argc, char **argv )
     p_out print;
 
     raft::DAG dag;
-    dag += a >> s[ "input_a" ];
-    dag += b >> s[ "input_b" ];
+    dag += a >> s[ "input_a"_port ];
+    dag += b >> s[ "input_b"_port ];
     dag += s >> print;
     try
     {

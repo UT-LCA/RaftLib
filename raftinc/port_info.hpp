@@ -116,10 +116,10 @@ struct PortInfo
     std::type_index type;
 
     Kernel *my_kernel = nullptr;
-    port_name_t my_name = null_port_value;
+    port_key_t my_name = null_port_value;
 
     Kernel *other_kernel = nullptr;
-    port_name_t other_name = null_port_value;
+    port_key_t other_name = null_port_value;
 
     const PortInfo *other_port = nullptr;
 

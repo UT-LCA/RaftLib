@@ -41,9 +41,9 @@ main( int argc, char **argv )
      */
     try
     {
-        dag += a >> s[ "input_a" ];
-        dag += a >> s[ "input_b" ];
-        dag += b >> s[ "input_b" ];
+        dag += a >> s[ "input_a"_port ];
+        dag += a >> s[ "input_b"_port ];
+        dag += b >> s[ "input_b"_port ];
         dag += s >> print;
         dag.exe< raft::RuntimeFIFO >();
     }

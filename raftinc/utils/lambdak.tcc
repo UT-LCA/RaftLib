@@ -145,13 +145,25 @@ struct AddSamePortsHelper< PORT, PORTSK... >
         using input_index_type = std::remove_const_t<decltype(input_count)>;
         for( input_index_type it( 0 ); it < input_count; it++ )
         {
-            kernel->addInput< PORT >( std::to_string( it ) );
+            auto portname( std::to_string( it ) );
+#if STRING_NAMES
+            kernel->addInput< PORT >( portname );
+#else
+            kernel->addInput< PORT >(
+                    raft::port_name_t( portname.c_str(), portname.size() ) );
+#endif
         }
 
         using output_index_type = std::remove_const_t<decltype(output_count)>;
         for( output_index_type it( 0 ); it < output_count; it++ )
         {
-            kernel->addOutput< PORT >( std::to_string( it ) );
+            auto portname( std::to_string( it ) );
+#if STRING_NAMES
+            kernel->addOutput< PORT >( portname );
+#else
+            kernel->addOutput< PORT >(
+                    raft::port_name_t( portname.c_str(), portname.size() ) );
+#endif
         }
     }
 };
@@ -168,13 +180,25 @@ struct AddPortsHelper< PORT, PORTSL... >
     {
         if( input_index < input_max )
         {
+            auto portname( std::to_string( input_index++ ) );
             /** add ports in order, 0,1,2, etc. **/
-            kernel->addInput< PORT >( std::to_string( input_index++ ) );
+#if STRING_NAMES
+            kernel->addInput< PORT >( portname );
+#else
+            kernel->addInput< PORT >(
+                    raft::port_name_t( portname.c_str(), portname.size() ) );
+#endif
         }
         else if( output_index < output_max )
         {
-            /** add ports in order, 0, 1, 2, etc. **/
-            kernel->addOutput< PORT >( std::to_string( output_index++ ) );
+            auto portname( std::to_string( output_index++ ) );
+            /** add ports in order, 0,1,2, etc. **/
+#if STRING_NAMES
+            kernel->addOutput< PORT >( portname );
+#else
+            kernel->addOutput< PORT >(
+                    raft::port_name_t( portname.c_str(), portname.size() ) );
+#endif
         }
         else
         {
@@ -209,19 +233,6 @@ struct AddPortsHelper<>
         return;
     }
 };
-//template < class... PORTS >
-//void lambdak< PORTS... >::template add_ports_helper<>(
-//        std::size_t & input_index,
-//        const std::size_t input_max,
-//        std::size_t & output_index,
-//        const std::size_t output_max )
-//{
-//    UNUSED( input_index );
-//    UNUSED( input_max );
-//    UNUSED( output_index );
-//    UNUSED( output_max );
-//    return;
-//}
 
 
 } /* end namespace raft */

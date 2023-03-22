@@ -60,14 +60,14 @@ public:
 
     virtual bool allocate( Task *task, bool dryrun )
     {
-        return task->allocate( "0", dryrun );
+        return task->allocate( "0"_port, dryrun );
     }
 
     virtual kstatus::value_t compute( StreamingData &dataIn,
                                       StreamingData &bufOut )
     {
-        bufOut[ "0" ].allocate< T >() = *begin;
-        bufOut[ "0" ].send();
+        bufOut[ "0"_port ].allocate< T >() = *begin;
+        bufOut[ "0"_port ].send();
         ++begin;
         return ( end == begin ) ? kstatus::stop : kstatus::proceed;
     }

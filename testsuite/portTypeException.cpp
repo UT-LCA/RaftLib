@@ -30,11 +30,11 @@ main( int argc, char **argv )
     sum s;
     p_out p;
 
-    dag += g1 >> s[ "input_a" ];
+    dag += g1 >> s[ "input_a"_port ];
 
     try
     {
-        dag += g2 >> s[ "input_b" ];
+        dag += g2 >> s[ "input_b"_port ];
     }
     catch( raft::PortTypeMismatchException &ex )
     {

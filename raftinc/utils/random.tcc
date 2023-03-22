@@ -47,7 +47,12 @@ public:
         {
 #endif
         std::size_t idx = inc_output< TYPE >();
-        out_names.push_back( std::to_string( idx ) );
+        auto outname( std::to_string( idx ) );
+#if STRING_NAMES
+        out_names.push_back( outname );
+#else
+        out_names.push_back( raft::port_name_t( outname.c_str(), outname.size() ) );
+#endif
 #ifdef STATICPORT
         }
 #endif

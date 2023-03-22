@@ -30,9 +30,9 @@ public:
 
         if ( i <= 10 ) 
         {
-            auto &c( bufOut[ "out" ].allocate< obj_t >() );
+            auto &c( bufOut[ "out"_port ].allocate< obj_t >() );
             c = i;
-            bufOut[ "out" ].send();
+            bufOut[ "out"_port ].send();
         }
         else
         {   
@@ -56,7 +56,7 @@ public:
 
     virtual bool pop( raft::Task *task, bool dryrun )
     {
-        return task->pop( "in", dryrun );
+        return task->pop( "in"_port, dryrun );
     }
 
     virtual bool allocate( raft::Task *task, bool dryrun )
@@ -67,9 +67,9 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &a( dataIn[ "in" ].peek< obj_t >() );
+        auto &a( dataIn[ "in"_port ].peek< obj_t >() );
         std::cout << a << "\n";
-        dataIn[ "in" ].recycle();
+        dataIn[ "in"_port ].recycle();
         return ( raft::kstatus::proceed );
     }
 };

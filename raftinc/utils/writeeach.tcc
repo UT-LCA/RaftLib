@@ -53,7 +53,7 @@ public:
 
     virtual bool pop( Task *task, bool dryrun )
     {
-        return task->pop( "0", dryrun );
+        return task->pop( "0"_port, dryrun );
     }
 
     virtual bool allocate( Task *task, bool dryrun )
@@ -64,8 +64,8 @@ public:
     virtual kstatus::value_t compute( StreamingData &dataIn,
                                       StreamingData &bufOut )
     {
-        ( *inserter ) = dataIn[ "0" ].peek< T >();
-        dataIn[ "0" ].recycle();
+        ( *inserter ) = dataIn[ "0"_port ].peek< T >();
+        dataIn[ "0"_port ].recycle();
         /** hope the iterator defined overloaded ++ **/
         ++inserter;
         return( kstatus::proceed );

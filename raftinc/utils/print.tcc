@@ -43,7 +43,7 @@ public:
     printabstract() : raft::Kernel(),
                       raft::printbase()
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         add_input< T >( "0" );
 #else
         /**
@@ -58,7 +58,7 @@ public:
     printabstract( std::ostream &stream )  : raft::Kernel(),
                                              raft::printbase()
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         add_input< T >( "0" );
 #else
         /**
@@ -72,7 +72,7 @@ public:
 
     virtual bool pop( Task *task, bool dryrun )
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         return task->pop( "0", dryrun );
 #else
         return task->pop( "0"_port, dryrun );
@@ -112,7 +112,7 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         const auto &data( dataIn.peek< T >() );
         *((this)->ofs) << data << delim;
         dataIn.recycle();
@@ -151,7 +151,7 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         const auto &data( dataIn.peek< T >() );
         *((this)->ofs) << data;
         dataIn.recycle();

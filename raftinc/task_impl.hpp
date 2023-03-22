@@ -36,11 +36,19 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
     {
         if( dryrun )
         {
+#if STRING_NAMES
             return Singleton::allocate()->getDataIn( this, portname );
+#else
+            return Singleton::allocate()->getDataIn( this, portname.val );
+#endif
         }
         else
         {
+#if STRING_NAMES
             return Singleton::allocate()->dataInReady( this, portname );
+#else
+            return Singleton::allocate()->dataInReady( this, portname.val );
+#endif
         }
     }
 
@@ -48,11 +56,19 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
     {
         if( dryrun )
         {
+#if STRING_NAMES
             return Singleton::allocate()->getBufOut( this, portname );
+#else
+            return Singleton::allocate()->getBufOut( this, portname.val );
+#endif
         }
         else
         {
+#if STRING_NAMES
             return Singleton::allocate()->bufOutReady( this, portname );
+#else
+            return Singleton::allocate()->bufOutReady( this, portname.val );
+#endif
         }
     }
 

@@ -94,8 +94,8 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
         TaskAllocMeta(), selected_in( nullptr ), selected_out( nullptr ) {}
     virtual ~TaskFIFOAllocMeta() = default;
 
-    std::unordered_map< port_name_t, TaskFIFOPort* > name2port_in;
-    std::unordered_map< port_name_t, TaskFIFOPort* > name2port_out;
+    std::unordered_map< port_key_t, TaskFIFOPort* > name2port_in;
+    std::unordered_map< port_key_t, TaskFIFOPort* > name2port_out;
 
     /* use vector for faster iterating */
     std::vector< TaskFIFOPort > ports_in;
@@ -218,23 +218,23 @@ public:
         return dag;
     }
 
-    virtual bool dataInReady( Task *task, const port_name_t &name )
+    virtual bool dataInReady( Task *task, const port_key_t &name )
     {
         return task_has_input_data( task );
         //return kernel_has_input_data( task->kernel );
     }
 
-    virtual bool bufOutReady( Task *task, const port_name_t &name )
+    virtual bool bufOutReady( Task *task, const port_key_t &name )
     {
         return kernel_has_output_buf( task->kernel );
     }
 
-    virtual bool getDataIn( Task *task, const port_name_t &name )
+    virtual bool getDataIn( Task *task, const port_key_t &name )
     {
         return task_has_input_data( task, name );
     }
 
-    virtual bool getBufOut( Task *task, const port_name_t &name )
+    virtual bool getBufOut( Task *task, const port_key_t &name )
     {
         return kernel_has_output_buf( task->kernel, name );
     }
@@ -289,7 +289,7 @@ public:
         return true;
     }
 
-    virtual void select( Task *task, const port_name_t &name, bool is_in )
+    virtual void select( Task *task, const port_key_t &name, bool is_in )
     {
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         if( is_in )
@@ -402,7 +402,7 @@ protected:
      * @return bool  - true if input data available.
      */
     static bool kernel_has_input_data( Kernel *kernel,
-                                       const port_name_t &name =
+                                       const port_key_t &name =
                                        null_port_value )
     {
         auto &port_list( kernel->input );
@@ -476,11 +476,11 @@ protected:
      * data, returns true if any of the input fifos has available
      * data.
      * @param kernel - raft::Task*
-     * @param name - raft::port_name_t &
+     * @param name - raft::port_key_t &
      * @return bool  - true if input data available.
      */
     bool task_has_input_data( Task *task,
-                              const port_name_t &name = null_port_value )
+                              const port_key_t &name = null_port_value )
     {
         assert( POLLING_WORKER == task->type );
 
@@ -537,7 +537,7 @@ protected:
      * @return bool  - true if output buffer available.
      */
     static bool kernel_has_output_buf( Kernel *kernel,
-                                       const port_name_t &name =
+                                       const port_key_t &name =
                                        null_port_value )
     {
         auto &port_list( kernel->output );

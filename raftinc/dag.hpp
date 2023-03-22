@@ -125,13 +125,13 @@ protected:
     /**
      * connect2 - Connect two kernels with their specified ports.
      * @param   src - Kernel*
-     * @param   src_name - const port_name_t&
+     * @param   src_name - const port_key_t&
      * @param   dst - Kernel*
-     * @param   dst_name - const port_name_t&
+     * @param   dst_name - const port_key_t&
      * @return  PortInfo& src_port_info, which should have all info of the edge
      */
-    const PortInfo &connect2( Kernel *src, const port_name_t &src_name,
-                              Kernel *dst, const port_name_t &dst_name )
+    const PortInfo &connect2( Kernel *src, const port_key_t &src_name,
+                              Kernel *dst, const port_key_t &dst_name )
     {
         const PortInfo &src_port_info ( src->getOutput( src_name ) );
         const PortInfo &dst_port_info ( dst->getInput( dst_name ) );

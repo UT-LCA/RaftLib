@@ -43,28 +43,28 @@ public:
                                           term_length( term.length() ),
                                           term( term )
     {
-        add_input< T >( "0" );
-        add_output< match_t >( "1" );
+        add_input< T >( "0"_port );
+        add_output< match_t >( "1"_port );
     }
 
     search( const std::string &term ) : raft::Kernel(),
                                         term_length( term.length() ),
                                         term( term )
     {
-        add_input< T >( "0" );
-        add_output< match_t >( "1" );
+        add_input< T >( "0"_port );
+        add_output< match_t >( "1"_port );
     }
 
     virtual ~search() = default;
 
     virtual bool pop( Task *task, bool dryrun )
     {
-        return task->pop( "0", dryrun );
+        return task->pop( "0"_port, dryrun );
     }
 
     virtual bool allocate( Task *task, bool dryrun )
     {
-        return task->allocate( "1", dryrun );
+        return task->allocate( "1"_port, dryrun );
     }
 
     virtual raft::kstatus::value_t compute( StreamingData &dataIn,

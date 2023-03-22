@@ -35,10 +35,12 @@ set( OPTIONAL_MODULES "")
 mark_as_advanced( STRING_NAMES )
 set( STRING_NAMES true CACHE BOOL "Default is to use legacy string-named ports." )
 if( STRING_NAMES )
+    message( INFO "STRING_NAMES=${STRING_NAMES}" )
     set( STRNAMES  "-DSTRING_NAMES=1" )
     add_definitions( ${STRNAMES} )
 else()
-    list( APPEND OPTIONAL_MODULES highwayhash )
+    #now hh.hpp is included under raftinc, rather than a standalone submodule
+    #list( APPEND OPTIONAL_MODULES highwayhash )
 endif( STRING_NAMES )
 
 

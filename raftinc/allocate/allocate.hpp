@@ -66,11 +66,11 @@ public:
         return true;
     }
 
-    virtual bool dataInReady( Task *task, const port_name_t &name ) = 0;
-    virtual bool bufOutReady( Task *task, const port_name_t &name ) = 0;
+    virtual bool dataInReady( Task *task, const port_key_t &name ) = 0;
+    virtual bool bufOutReady( Task *task, const port_key_t &name ) = 0;
 
-    virtual bool getDataIn( Task *task, const port_name_t &name ) = 0;
-    virtual bool getBufOut( Task *task, const port_name_t &name ) = 0;
+    virtual bool getDataIn( Task *task, const port_key_t &name ) = 0;
+    virtual bool getBufOut( Task *task, const port_key_t &name ) = 0;
 
     virtual StreamingData &getDataIn( Task *task ) = 0;
     virtual StreamingData &getBufOut( Task *task ) = 0;
@@ -80,7 +80,7 @@ public:
     virtual void invalidateOutputs( Task *task ) = 0;
     virtual bool taskHasInputPorts( Task *task ) = 0;
 
-    virtual void select( Task *task, const port_name_t &name, bool is_in ) = 0;
+    virtual void select( Task *task, const port_key_t &name, bool is_in ) = 0;
     virtual void taskPop( Task *task, DataRef &item ) = 0;
     virtual DataRef taskPeek( Task *task ) = 0;
     virtual void taskRecycle( Task *task ) = 0;

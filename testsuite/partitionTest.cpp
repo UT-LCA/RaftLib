@@ -23,14 +23,14 @@ main( int argc, char **argv )
                     raft::StreamingData &bufOut ) -> raft::kstatus::value_t
     {
         std::uint32_t a;
-        dataIn[ "0" ].pop( a );
-        bufOut[ "0" ].push( a - 10 );
+        dataIn[ "0"_port ].pop( a );
+        bufOut[ "0"_port ].push( a - 10 );
         return( raft::kstatus::proceed );
     } );
 
     auto l_pop( []( raft::Task *task, bool dryrun )
     {
-        return task->pop( "0", dryrun );
+        return task->pop( "0"_port, dryrun );
     } );
 
     raft::DAG dag;

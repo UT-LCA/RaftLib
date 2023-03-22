@@ -47,21 +47,13 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-#ifdef STRING_NAMES    
-        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
-#else
         auto &mem( bufOut[ "y"_port ].allocate< obj_t >() );
-#endif
         A.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-#ifdef STRING_NAMES        
-        bufOut[ "y" ].send();
-#else
         bufOut[ "y"_port ].send();
-#endif
         counter++;
         if( counter == 200 )
         {
@@ -85,17 +77,10 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-#ifdef STRING_NAMES    
-        auto &val( dataIn[ "x" ].peek< obj_t >() );
-        B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
-        bufOut[ "y" ].push( val);
-        dataIn[ "x" ].recycle();
-#else
         auto &val( dataIn[ "x"_port ].peek< obj_t >() );
         B.emplace_back( reinterpret_cast< std::uintptr_t >( &val ) ); 
         bufOut[ "y"_port ].push( val );
         dataIn[ "x"_port ].recycle();
-#endif
         return( raft::kstatus::proceed );
     }
 };
@@ -114,11 +99,7 @@ public:
                                             raft::StreamingData &bufOut )
     {
         obj_t mem;
-#ifdef STRING_NAMES        
-        dataIn[ "x" ].pop( mem );
-#else
         dataIn[ "x"_port ].pop( mem );
-#endif
         C.emplace_back( reinterpret_cast< std::uintptr_t >( &mem ) ); 
         /** Jan 2016 - otherwise end up with a signed/unsigned compare w/auto **/
         using index_type = std::remove_const_t<decltype(mem.length)>;

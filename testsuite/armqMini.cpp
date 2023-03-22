@@ -45,7 +45,7 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        bufOut[ "y" ].push< obj_t >( counter );
+        bufOut[ "y"_port ].push< obj_t >( counter );
         if( ++counter == 200 )
         {
             return( raft::kstatus::stop );
@@ -79,7 +79,7 @@ public:
                                             raft::StreamingData &bufOut )
     {
         obj_t in;
-        dataIn[ "x" ].pop< obj_t >( in );
+        dataIn[ "x"_port ].pop< obj_t >( in );
         std::cout << in << std::endl;
         if( 0 != checkboard[ in ] )
         {

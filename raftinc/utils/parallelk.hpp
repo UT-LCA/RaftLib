@@ -48,16 +48,13 @@ protected:
     std::size_t inc_input()
     {
         const auto portid( port_name_index++ );
+        const auto portname( std::to_string( portid ) );
 
-#ifdef STRING_NAMES
-        add_input< T >( std::to_string( portid ) );
+#if STRING_NAMES
+        add_input< T >( portname );
 #else
-        /**
-         * if not strings, the addPort function expects a port_key_name_t
-         * struct, so, we have to go and add it.
-         */
-        add_input< T >( raft::port_key_name_t( portid, std::to_string(
-                        portid ) ) );
+        add_input< T >(
+                raft::port_name_t( portname.c_str(), portname.size() ) );
 #endif
         return( portid );
     }
@@ -70,16 +67,13 @@ protected:
     std::size_t inc_output()
     {
         const auto portid( port_name_index++ );
+        const auto portname( std::to_string( portid ) );
 
-#ifdef STRING_NAMES
-        add_output< T >( std::to_string( portid ) );
+#if STRING_NAMES
+        add_output< T >( portname );
 #else
-        /**
-         * if not strings, the addPort function expects a port_key_name_t
-         * struct, so, we have to go and add it.
-         */
-        add_output< T >( raft::port_key_name_t( portid, std::to_string(
-                         portid ) ) );
+        add_output< T >(
+                raft::port_name_t( portname.c_str(), portname.size() ) );
 #endif
         return( portid );
     }

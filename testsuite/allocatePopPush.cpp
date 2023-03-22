@@ -41,12 +41,12 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &mem( bufOut[ "y" ].allocate< obj_t >() );
+        auto &mem( bufOut[ "y"_port ].allocate< obj_t >() );
         for( auto i( 0 ); i < mem.length; i++ )
         {
             mem.pad[ i ] = static_cast< int >( counter );
         }
-        bufOut[ "y" ].send();
+        bufOut[ "y"_port ].send();
         counter++;
         if( counter == 200 )
         {
@@ -73,8 +73,8 @@ public:
                                             raft::StreamingData &bufOut )
     {
         obj_t obj;
-        dataIn[ "x" ].pop( obj );
-        bufOut[ "y" ].push( obj );
+        dataIn[ "x"_port ].pop( obj );
+        bufOut[ "y"_port ].push( obj );
         return( raft::kstatus::proceed );
     }
 };
@@ -92,7 +92,7 @@ public:
     virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
                                             raft::StreamingData &bufOut )
     {
-        auto &mem( dataIn[ "x" ].peek< obj_t >() );
+        auto &mem( dataIn[ "x"_port ].peek< obj_t >() );
 
         using index_type = std::remove_const_t<decltype(mem.length)>;
         for( index_type i( 0 ); i < mem.length; i++ )
@@ -100,7 +100,7 @@ public:
             //will fail if we've messed something up
             assert( static_cast<std::size_t>(mem.pad[ i ]) == counter );
         }
-        dataIn[ "x" ].recycle();
+        dataIn[ "x"_port ].recycle();
         counter++;
         return( raft::kstatus::proceed );
     }

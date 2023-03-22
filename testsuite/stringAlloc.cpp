@@ -52,9 +52,9 @@ main()
 
         for( auto i( 0 ); i < 5; i++ )
         {
-            auto &out( bufOut[ "0" ].allocate< type_t >() );
+            auto &out( bufOut[ "0"_port ].allocate< type_t >() );
             out = arr[ i ];
-            bufOut[ "0" ].send();
+            bufOut[ "0"_port ].send();
         }
         return( raft::kstatus::stop );
     } );

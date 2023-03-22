@@ -40,8 +40,8 @@ class Kpair
 public:
     Kpair( Kernel *a,
            Kernel *b,
-           const port_name_t &pa = null_port_value,
-           const port_name_t &pb = null_port_value
+           const port_key_t &pa = null_port_value,
+           const port_key_t &pb = null_port_value
            ) : src( a ), dst( b ), src_name( pa ), dst_name( pb )
     {
         head = this;
@@ -50,12 +50,12 @@ public:
 
     Kpair( Kernel *a,
            KernelPort &b,
-           const port_name_t &pa = null_port_value
+           const port_key_t &pa = null_port_value
            ) : Kpair( a,  b.kernel, pa, b.pop_name() ) {}
 
     Kpair( Kernel *a,
            Kpair &b,
-           const port_name_t &pa = null_port_value
+           const port_key_t &pa = null_port_value
            ) : Kpair( a, b.src, pa )
     {
         next = &b;
@@ -65,7 +65,7 @@ public:
 
     Kpair( KernelPort &a,
            Kernel *b,
-           const port_name_t &pb = null_port_value
+           const port_key_t &pb = null_port_value
            ) : Kpair( a.kernel, b, a.pop_name(), pb ) {}
 
     Kpair( KernelPort &a,
@@ -83,7 +83,7 @@ public:
 
     Kpair( Kpair &a,
            Kernel *b,
-           const port_name_t &pb = null_port_value
+           const port_key_t &pb = null_port_value
            ) : Kpair( a.dst, b, null_port_value, pb )
     {
         head = a.head;
@@ -149,8 +149,8 @@ protected:
     Kpair *head = nullptr;
     Kernel *src = nullptr;
     Kernel *dst = nullptr;
-    port_name_t src_name = null_port_value;
-    port_name_t dst_name = null_port_value;
+    port_key_t src_name = null_port_value;
+    port_key_t dst_name = null_port_value;
 
     int priority_factor;
     /* a hint from programmer about how heavy the traffic through this

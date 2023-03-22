@@ -27,7 +27,7 @@ main()
             static std::size_t gen_count( 0 );
             if( gen_count++ < 10000 )
             {
-               bufOut[ "0" ].push( rand_func() );
+               bufOut[ "0"_port ].push( rand_func() );
                return( raft::kstatus::proceed );
             }
             return( raft::kstatus::stop );

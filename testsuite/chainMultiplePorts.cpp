@@ -51,28 +51,28 @@
                       raft::StreamingData &bufOut )
      {
          std::uint32_t a,b;
-         dataIn[ "0" ].pop( a );
-         dataIn[ "1" ].pop( b );
-         bufOut[ "0" ].push( a + b );
+         dataIn[ "0"_port ].pop( a );
+         dataIn[ "1"_port ].pop( b );
+         bufOut[ "0"_port ].push( a + b );
          return( raft::kstatus::proceed );
      } );
 
      auto l_pop( []( raft::Task *task, bool dryrun )
      {
-         return task->pop( "0", dryrun ) &&
-                task->pop( "1", dryrun );
+         return task->pop( "0"_port, dryrun ) &&
+                task->pop( "1"_port, dryrun );
      } );
 
      auto l_alloc( []( raft::Task *task, bool dryrun )
      {
-         return task->allocate( "0", dryrun );
+         return task->allocate( "0"_port, dryrun );
      } );
 
      add add_kernel( 2, 1, l_add, l_pop, l_alloc );
 
      raft::DAG dag;
-     dag += g0 >> add_kernel[ "0" ][ "0" ] >> print;
-     dag += g1 >> add_kernel[ "1" ];
+     dag += g0 >> add_kernel[ "0"_port ][ "0"_port ] >> print;
+     dag += g1 >> add_kernel[ "1"_port ];
      dag.exe< raft::RuntimeFIFO >();
 
      return( EXIT_SUCCESS );

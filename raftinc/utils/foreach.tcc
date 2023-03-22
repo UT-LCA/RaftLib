@@ -39,14 +39,23 @@ public:
         for( index_type index( 0 ); index < nports; index++ )
         {
             auto name( std::to_string( index ) );
+#if STRING_NAMES
             add_output< T >( name );
+#else
+            raft::port_name_t portname( name.c_str(), name.size() );
+            add_output< T >( portname );
+#endif
 
             const std::size_t start_index( index * inc );
             buf_info.ptr = reinterpret_cast< void* >(
                     &existing_buffer[ start_index ] );
             buf_info.nitems = inc + ( (nports - 1) == index ? adder : 0 );
             buf_info.start_index = start_index;
+#if STRING_NAMES
             get_port( output, name ).setExistingBuffer( buf_info );
+#else
+            get_port( output, portname.val ).setExistingBuffer( buf_info );
+#endif
         }
     }
 

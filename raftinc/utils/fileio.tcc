@@ -108,7 +108,7 @@ public:
 
     virtual bool allocate( raft::Task *task, bool dryrun )
     {
-#ifdef STRING_NAMES
+#if STRING_NAMES
         return task->allocate( "0", dryrun );
 #else
         return task->allocate( "0"_port, dryrun );
