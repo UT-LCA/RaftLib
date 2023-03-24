@@ -86,7 +86,30 @@ struct OneShotQTSchedMeta : public TaskSchedMeta
 };
 #endif
 
-#if USE_QTHREAD
+#if UT_FOUND
+struct OneShotUTSchedMeta : public TaskSchedMeta
+{
+    OneShotUTSchedMeta(
+            Task *the_task, waitgroup_t *the_wg, bool is_s = false ) :
+        TaskSchedMeta( the_task ), wg( the_wg ), is_source( is_s )
+    {
+        task->sched_meta = this;
+        waitgroup_add( wg, 1 );
+        rt::Spawn( [ & ](){ task->exe(); } );
+    }
+
+    virtual ~OneShotUTSchedMeta()
+    {
+    }
+
+    waitgroup_t *wg;
+    bool is_source;
+};
+#endif
+
+#if USE_UT
+using OneShotSchedMeta = struct OneShotUTSchedMeta;
+#elif USE_QTHREAD
 using OneShotSchedMeta = struct OneShotQTSchedMeta;
 #else
 using OneShotSchedMeta = struct OneShotStdSchedMeta;
@@ -108,7 +131,7 @@ public:
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            auto *tmeta( static_cast< OneShotStdSchedMeta* >(
+            auto *tmeta( static_cast< OneShotSchedMeta* >(
                         task->sched_meta ) );
             tmeta->is_source = false; /* stop self_iterate() */
         }
@@ -118,8 +141,13 @@ public:
     {
         feed_consumers( task );
         self_iterate( task ); /* for source kernels to start a new iteration */
+#if USE_UT
+        auto *tmeta( static_cast< OneShotSchedMeta* >( task->sched_meta ) );
+        waitgroup_done( tmeta->wg );
+#else
         task->sched_meta->finished = true;
-        /* mark finished here because oneshot task doest not postexit() */
+        /* mark finished here because oneshot task does not postexit() */
+#endif
     }
 
 protected:
@@ -150,6 +178,9 @@ protected:
         /* allocate the output buffer */
         Singleton::allocate()->taskInit( task );
 
+#if USE_UT
+        auto *tmeta( new OneShotSchedMeta( task, &wg, true ) );
+#else
         auto *tmeta( new OneShotSchedMeta( task, true ) );
         while( ! tasks_mutex.try_lock() )
         {
@@ -160,6 +191,7 @@ protected:
         tasks->next = tmeta;
         /** we got here, unlock **/
         tasks_mutex.unlock();
+#endif
 
         return;
     }
@@ -183,7 +215,7 @@ protected:
 
     void self_iterate( Task *task )
     {
-        auto *tmeta( static_cast< OneShotStdSchedMeta* >(
+        auto *tmeta( static_cast< OneShotSchedMeta* >(
                      task->sched_meta ) );
         if( ! tmeta->is_source )
         {
@@ -211,16 +243,20 @@ protected:
         tnext->stream_in->set( dst_name, ref );
         Singleton::allocate()->taskInit( tnext );
 
+#if USE_UT
+        auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
+#else
+        auto *tmeta( new OneShotSchedMeta( tnext ) );
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
         }
-        auto *tmeta( new OneShotSchedMeta( tnext ) );
         /* insert into tasks linked list */
         tmeta->next = tasks->next;
         tasks->next = tmeta;
         /** we got here, unlock **/
         tasks_mutex.unlock();
+#endif
     }
 
 };

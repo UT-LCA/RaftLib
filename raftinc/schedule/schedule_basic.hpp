@@ -139,6 +139,7 @@ public:
             std::cerr << "failure to initialize libut runtime, existing\n";
             exit( EXIT_FAILURE );
         }
+        waitgroup_init( &wg );
 #elif USE_QTHREAD
         const auto ret_val( qthread_initialize() );
         if( 0 != ret_val )
@@ -300,7 +301,6 @@ protected:
         {
             ntasks += k->getCloneFactor();
         }
-        waitgroup_init( &wg );
         waitgroup_add( &wg, ntasks );
 #endif
         for( auto * const k : container )
