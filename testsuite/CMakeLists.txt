@@ -87,6 +87,7 @@ foreach( APP ${TESTAPPS} )
                                 ${PROJECT_SOURCE_DIR}
                                 ${PROJECT_BINARY_DIR}/raftinc
                                 ${QTHREAD_INCLUDE}
+                                ${UT_INCLUDE}
                               )
     add_test( NAME "${APP}_test" COMMAND ${APP} )
 endforeach( APP ${TESTAPPS} )

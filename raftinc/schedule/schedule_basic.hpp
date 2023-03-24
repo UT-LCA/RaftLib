@@ -25,6 +25,9 @@
 #if QTHREAD_FOUND
 #include <qthread/qthread.hpp>
 #endif
+#if UT_FOUND
+#include <ut>
+#endif
 
 #include "raftinc/signalhandler.hpp"
 #include "raftinc/rafttypes.hpp"
@@ -91,7 +94,29 @@ struct QThreadSchedMeta : public TaskSchedMeta
 };
 #endif
 
-#if USE_QTHREAD
+#if UT_FOUND
+struct UTSchedMeta : public TaskSchedMeta
+{
+    UTSchedMeta( Task *the_task, waitgroup_t *the_wg ) :
+        TaskSchedMeta( the_task ), wg( the_wg )
+    {
+        run_count = 0;
+        task->sched_meta = this;
+        rt::Spawn( [ & ](){ task->exe(); } );
+    }
+
+    virtual ~UTSchedMeta()
+    {
+    }
+
+    int8_t run_count;
+    waitgroup_t *wg;
+};
+#endif
+
+#if USE_UT
+using PollingWorkerSchedMeta = struct UTSchedMeta;
+#elif USE_QTHREAD
 using PollingWorkerSchedMeta = struct QThreadSchedMeta;
 #else
 using PollingWorkerSchedMeta = struct StdThreadSchedMeta;
@@ -104,10 +129,17 @@ public:
     ScheduleBasic( DAG &dag, Allocate *the_alloc ) :
         Schedule(), kernels( dag.getKernels() ),
         source_kernels( dag.getSourceKernels() ),
-        sink_kernels( dag.getSinkKernels() ),
-        alloc( the_alloc )
+        sink_kernels( dag.getSinkKernels() )
     {
-#if USE_QTHREAD
+#if USE_UT
+        const auto ret_val( runtime_initialize( NULL ) );
+        // with cfg_path set to NULL, libut would getenv("LIBUT_CFG")
+        if( 0 != ret_val )
+        {
+            std::cerr << "failure to initialize libut runtime, existing\n";
+            exit( EXIT_FAILURE );
+        }
+#elif USE_QTHREAD
         const auto ret_val( qthread_initialize() );
         if( 0 != ret_val )
         {
@@ -131,13 +163,26 @@ public:
      */
     virtual void schedule()
     {
-        while( ! alloc->isReady() )
+#if USE_UT
+        runtime_start( static_wrapper, this );
+#else
+        doSchedule();
+#endif
+    }
+
+    void doSchedule()
+    {
+
+        while( ! Singleton::allocate()->isReady() )
         {
             raft::yield();
         }
 
         (this)->start_tasks();
 
+#if USE_UT
+        waitgroup_wait( &wg );
+#else
         bool keep_going( true );
         while( keep_going )
         {
@@ -172,6 +217,7 @@ public:
             std::chrono::milliseconds dura( 3 );
             std::this_thread::sleep_for( dura );
         }
+#endif
         return;
     }
 
@@ -226,14 +272,37 @@ public:
     virtual void postexit( Task* task )
     {
         Singleton::allocate()->invalidateOutputs( task );
+#if USE_UT
+        auto *tmeta(
+                static_cast< PollingWorkerSchedMeta* >( task->sched_meta ) );
+        waitgroup_done( tmeta->wg );
+#else
         task->sched_meta->finished = true;
+#endif
     }
 
 protected:
 
+#if USE_UT
+    static void static_wrapper( void *arg )
+    {
+        auto *sched( static_cast< ScheduleBasic* >( arg ) );
+        sched->doSchedule();
+    }
+#endif
+
     virtual void start_tasks()
     {
         auto &container( kernels.acquire() );
+#if USE_UT
+        std::size_t ntasks = 0;
+        for( auto * const k : container )
+        {
+            ntasks += k->getCloneFactor();
+        }
+        waitgroup_init( &wg );
+        waitgroup_add( &wg, ntasks );
+#endif
         for( auto * const k : container )
         {
             start_polling_worker( k );
@@ -272,6 +341,9 @@ protected:
             //assert( Singleton::allocate()->isReady() );
             Singleton::allocate()->taskInit( task );
 
+#if USE_UT
+            auto *tmeta( new PollingWorkerSchedMeta( task, &wg ) );
+#else
             auto *tmeta( new PollingWorkerSchedMeta( task ) );
 
             while( ! tasks_mutex.try_lock() )
@@ -283,6 +355,7 @@ protected:
             tasks->next = tmeta;
             /** we got here, unlock **/
             tasks_mutex.unlock();
+#endif
         }
 
         return;
@@ -292,8 +365,9 @@ protected:
     kernelkeeper kernels;
     kernelkeeper source_kernels;
     kernelkeeper sink_kernels;
-
-    Allocate *alloc;
+#if USE_UT
+    waitgroup_t wg;
+#endif
 };
 
 } /** end namespace raft **/

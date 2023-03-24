@@ -111,6 +111,7 @@ struct Data< T, Type::Heap, ext_alloc_t< T > > : public DataHeapBase< T* >
     virtual T& copyRealT( const std::size_t pos, T* ptr )
     {
         (this)->store[ pos ] = new T( *ptr );
+        return *( (this)->store[ pos ] );
     }
 
 }; /** end heap > Line Size **/

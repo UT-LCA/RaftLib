@@ -11,7 +11,7 @@ find_package( UT )
 if( QTHREAD_FOUND )
     add_definitions("-DQTHREAD_FOUND=1")
 endif()
-if( UTFOUND )
+if( UT_FOUND )
     add_definitions("-DUT_FOUND=1")
 endif()
 
