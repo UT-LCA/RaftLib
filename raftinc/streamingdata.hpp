@@ -100,6 +100,13 @@ public:
         return store[ name ];
     }
 
+    StreamingData &select()
+    {
+        assert( 1 == store.size() );
+        iter = store.begin();
+        return *this;
+    }
+
     StreamingData &select( const port_name_t &name )
     {
 #if STRING_NAMES

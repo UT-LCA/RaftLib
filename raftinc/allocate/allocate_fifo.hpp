@@ -731,6 +731,11 @@ protected:
             port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
             port.functor = p.second.runtime_info.fifo_functor;
         }
+        // preselect to avoid indexing with string
+        if( 1 == output_ports.size() )
+        {
+            oneshot->stream_out->select();
+        }
     }
 
     /**
