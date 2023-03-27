@@ -8,6 +8,7 @@
  * @author: Jonathan Beard, Qinzhe Wu
  * @version: Tue Sep 16 20:20:06 2014
  *
+ * Copyright 2023 The Regents of the University of Texas
  * Copyright 2014 Jonathan Beard
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -730,11 +731,6 @@ protected:
             port.idx = 0;
             port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
             port.functor = p.second.runtime_info.fifo_functor;
-        }
-        // preselect to avoid indexing with string
-        if( 1 == output_ports.size() )
-        {
-            oneshot->stream_out->select();
         }
     }
 

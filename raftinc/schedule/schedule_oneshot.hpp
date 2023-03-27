@@ -57,17 +57,18 @@ struct OneShotStdSchedMeta : public TaskSchedMeta
 #if QTHREAD_FOUND
 struct OneShotQTSchedMeta : public TaskSchedMeta
 {
-    OneShotQTSchedMeta( Task *the_task, bool is_s = false ) :
+    OneShotQTSchedMeta( Task *the_task, int64_t gid, bool is_s = false ) :
         TaskSchedMeta( the_task ), is_source( is_s )
     {
         task->sched_meta = this;
+        group_id = (0 <= gid) ? gid : task->kernel->getGroup();
         qthread_spawn( OneShotQTSchedMeta::run,
                        ( void* ) this,
                        0,
                        0,
                        0,
                        nullptr,
-                       task->kernel->getGroup() % qthread_num_shepherds(),
+                       group_id,
                        0 );
     }
 
@@ -83,6 +84,7 @@ struct OneShotQTSchedMeta : public TaskSchedMeta
     }
 
     volatile bool is_source;
+    int64_t group_id;
 };
 #endif
 
@@ -173,6 +175,9 @@ protected:
             raft::yield();
         }
         task->id = task_id++;
+#if USE_QTHREAD
+        src_id++;
+#endif
         tasks_mutex.unlock();
 
         /* allocate the output buffer */
@@ -181,7 +186,11 @@ protected:
 #if USE_UT
         auto *tmeta( new OneShotSchedMeta( task, &wg, true ) );
 #else
-        auto *tmeta( new OneShotSchedMeta( task, true ) );
+        auto *tmeta( new OneShotSchedMeta( task,
+#if USE_QTHREAD
+                                           src_id,
+#endif /* END USE_QTHREAD */
+                                           true ) );
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
@@ -204,11 +213,23 @@ protected:
         {
             const auto *other_pi( mykernel->output[ p.first ].other_port );
             //TODO: deal with a kernel depends on multiple producers
+#if USE_QTHREAD
+            auto *tmeta(
+                    static_cast< OneShotSchedMeta* >( task->sched_meta ) );
+            shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second,
+                         tmeta->group_id );
+#else
             shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second );
+#endif
             DataRef ref;
             while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
             {
+#if USE_QTHREAD
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
+                             tmeta->group_id );
+#else
                 shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
+#endif
             }
         }
     }
@@ -226,7 +247,8 @@ protected:
 
     void shot_kernel( Kernel *kernel,
                       const port_key_t &dst_name,
-                      DataRef &ref )
+                      DataRef &ref,
+                      int64_t gid = -1 )
     {
         OneShotTask *tnext = new OneShotTask();
         tnext->kernel = kernel;
@@ -243,10 +265,15 @@ protected:
         tnext->stream_in->set( dst_name, ref );
         Singleton::allocate()->taskInit( tnext );
 
+        UNUSED( gid );
 #if USE_UT
         auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
 #else
+#if USE_QTHREAD
+        auto *tmeta( new OneShotSchedMeta( tnext, gid ) );
+#else
         auto *tmeta( new OneShotSchedMeta( tnext ) );
+#endif /* END USE_QTHREAD */
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
@@ -259,6 +286,7 @@ protected:
 #endif
     }
 
+    volatile int64_t src_id = 0;
 };
 
 } /** end namespace raft **/

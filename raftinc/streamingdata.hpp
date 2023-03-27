@@ -87,12 +87,14 @@ public:
 
     void set( const port_key_t &name, const DataRef &ref )
     {
-        store.insert( std::make_pair( name, ref ) );
+        auto p( store.insert( std::make_pair( name, ref ) ) );
+        iter = p.first; /* std::pair<iterator, bool> */
     }
 
     void set( const port_key_t &name, DataRef &&ref )
     {
-        store.insert( std::make_pair( name, ref ) );
+        auto p( store.insert( std::make_pair( name, ref ) ) );
+        iter = p.first; /* std::pair<iterator, bool> */
     }
 
     DataRef &get( const port_key_t &name )
