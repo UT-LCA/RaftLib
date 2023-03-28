@@ -42,8 +42,12 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 
     kstatus::value_t exe()
     {
-        StreamingData dummy_in( this, StreamingData::IN );
-        StreamingData dummy_out( this, StreamingData::OUT );
+        StreamingData dummy_in( this, 1 >= kernel->input.size() ?
+                                StreamingData::SINGLE_IN :
+                                StreamingData::IN );
+        StreamingData dummy_out( this, 1 >= kernel->output.size() ?
+                                 StreamingData::SINGLE_OUT :
+                                 StreamingData::OUT );
         Singleton::schedule()->prepare( this );
         while( ! Singleton::schedule()->shouldExit( this ) )
         {

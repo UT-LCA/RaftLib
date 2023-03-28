@@ -714,7 +714,9 @@ protected:
 
     inline void oneshot_init( OneShotTask *oneshot )
     {
-        oneshot->stream_out = new StreamingData( oneshot, StreamingData::OUT );
+        oneshot->stream_out = new StreamingData( oneshot,
+                                                 StreamingData::OUT_1PIECE );
+        //FIXME: here OUT_1PIECE assumes only one output port
         auto &output_ports( oneshot->kernel->output );
 
         auto *tmeta( new TaskFIFOAllocMeta() );

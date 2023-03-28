@@ -61,108 +61,167 @@ class StreamingData
 {
 public:
 
-    enum Direction
+    using store_map_t = std::unordered_map< port_key_t, DataRef >;
+
+    enum Type : std::uint8_t
     {
-        IN,
-        OUT
+        IN         = 0x0,
+        OUT        = 0x1,
+        /* SINGLE: single port could avoid indexing with
+         * port name and looking up the container */
+        SINGLE_IN  = 0x2,
+        SINGLE_OUT = 0x3,
+        /* 1PIECE: prefetched from message queue, or stay
+         * as 1 piece output for oneshot tasks, rather
+         * than entering a message queue */
+        IN_1PIECE  = 0x6,
+        OUT_1PIECE = 0x7
     };
 
-    StreamingData( Task *t = nullptr, Direction dir = IN ) :
-        task( t ), direction( dir )
+    bool isInput() const
     {
+        return 0 == ( type & 0x1 );
+    }
+
+    bool isSingle() const
+    {
+        return 0 != ( type & 0x2 );
+    }
+
+    bool is1Piece() const
+    {
+        return 0 != ( type & 0x4 );
+    }
+
+
+    StreamingData( Task *t = nullptr, Type tt = IN ) :
+        task( t ), type( tt )
+    {
+        if( !isSingle() )
+        {
+            store = new store_map_t;
+            used = new store_map_t;
+        }
+    }
+
+    ~StreamingData()
+    {
+        if( nullptr != store )
+        {
+            delete store;
+        }
+        if( nullptr != used )
+        {
+            delete used;
+        }
     }
 
     template< class T >
     void setT( const port_key_t &name, T &data_ref )
     {
-        store.insert( std::make_pair( name, DataRef() ) );
-        store[ name ].set< T >( data_ref );
+        if( isSingle() )
+        {
+            single_store.set< T >( data_ref );
+            single_store_valid = true;
+        }
+        else
+        {
+            store->insert(
+                    std::make_pair( name, DataRef().set< T >( data_ref ) ) );
+        }
     }
 
     template< class T >
     T &getT( const port_key_t &name )
     {
-        return store[ name ].get< T >();
+        return isSingle() ?
+            single_store.get< T >() : store->at( name ).get< T >();
     }
 
     void set( const port_key_t &name, const DataRef &ref )
     {
-        auto p( store.insert( std::make_pair( name, ref ) ) );
-        iter = p.first; /* std::pair<iterator, bool> */
+        if( isSingle() )
+        {
+            single_store = ref;
+            ref_ptr = &single_store;
+            single_store_valid = true;
+        }
+        else
+        {
+            auto p( store->insert( std::make_pair( name, ref ) ) );
+            iter = p.first; /* std::pair<iterator, bool> */
+            ref_ptr = &iter->second;
+        }
     }
 
     void set( const port_key_t &name, DataRef &&ref )
     {
-        auto p( store.insert( std::make_pair( name, ref ) ) );
-        iter = p.first; /* std::pair<iterator, bool> */
+        if( isSingle() )
+        {
+            single_store = ref;
+            ref_ptr = &single_store;
+            single_store_valid = true;
+        }
+        else
+        {
+            auto p( store->insert( std::make_pair( name, ref ) ) );
+            iter = p.first; /* std::pair<iterator, bool> */
+            ref_ptr = &iter->second;
+        }
     }
 
     DataRef &get( const port_key_t &name )
     {
-        return store[ name ];
-    }
-
-    StreamingData &select()
-    {
-        assert( 1 == store.size() );
-        iter = store.begin();
-        return *this;
+        return isSingle() ? single_store : store->at( name );
     }
 
     StreamingData &select( const port_name_t &name )
     {
+        if( isSingle() )
+        {
+            ref_ptr = single_store_valid ? &single_store : nullptr;
+            return *this;
+        }
 #if STRING_NAMES
-        iter = store.find( name );
-        Singleton::allocate()->select( task, name, IN == direction );
+        const auto &name_val( name );
 #else
-        iter = store.find( name.val );
-        Singleton::allocate()->select( task, name.val, IN == direction );
+        const auto &name_val( name.val );
 #endif
+        iter = store->find( name_val );
+        ref_ptr = ( store->end() == iter ) ? nullptr : &iter->second;
+        if( ! is1Piece() )
+        {
+            Singleton::allocate()->select( task, name_val, isInput() );
+        }
         return *this;
     }
 
     StreamingData &operator[]( const port_name_t &name )
     {
-#if STRING_NAMES
-        iter = store.find( name );
-#else
-        iter = store.find( name.val );
-#endif
-        if( store.end() == iter )
-        {
-#if STRING_NAMES
-            Singleton::allocate()->select( task, name, IN == direction );
-#else
-            Singleton::allocate()->select( task, name.val, IN == direction );
-#endif
-        }
-        return *this;
+        return select( name );
     }
 
     StreamingData &at( const port_name_t &name )
     {
 #if STRING_NAMES
-        auto iter( store.find( name ) );
+        const auto &name_val( name );
 #else
-        auto iter( store.find( name.val ) );
+        const auto &name_val( name.val );
 #endif
-        if( store.end() == iter )
+        auto iter( store->find( name_val ) );
+        if( store->end() == iter )
         {
             std::stringstream ss;
-#if STRING_NAMES
-            ss << "Data not found for " << name << std::endl;
-#else
-            ss << "Data not found for " << name.val << std::endl;
-#endif
+            ss << "Data not found for " << name_val << std::endl;
             throw DataNotFoundException( ss.str() );
         }
-        return this->operator[]( name );
+        return select( name );
     }
 
     template< class T >
     void pop( T &item )
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             DataRef ref;
             ref.set< T >( item );
@@ -170,28 +229,30 @@ public:
             return;
         }
         //TODO: it assumes assign operator is defined for T
-        item = iter->second.get< T >();
+        item = ref_ptr->get< T >();
+        single_store_valid = false;
     }
 
     template< class T >
     T &peek()
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             return Singleton::allocate()->taskPeek( task ).get< T >();
         }
-        return iter->second.get< T >();
+        return ref_ptr->get< T >();
     }
 
     void recycle()
     {
         Singleton::allocate()->taskRecycle( task );
+        single_store_valid = false;
     }
 
     template< class T >
     void push( T &&item )
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             DataRef ref;
             ref.set< T >( item );
@@ -199,15 +260,23 @@ public:
             return;
         }
         //TODO: it assumes assign operator is defined for T
-        iter->second.get< T >() = item;
-        used.insert( *iter );
-        store.erase( iter );
+        ref_ptr->get< T >() = item;
+        ref_ptr = nullptr;
+        if( isSingle() )
+        {
+            single_store_valid = false;
+        }
+        else
+        {
+            used->insert( *iter );
+            store->erase( iter );
+        }
     }
 
     template< class T >
     void push( T &item )
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             DataRef ref;
             ref.set< T >( item );
@@ -215,58 +284,99 @@ public:
             return;
         }
         //TODO: it assumes assign operator is defined for T
-        iter->second.get< T >() = item;
-        used.insert( *iter );
-        store.erase( iter );
+        ref_ptr->get< T >() = item;
+        ref_ptr = nullptr;
+        if( isSingle() )
+        {
+            single_store_valid = false;
+        }
+        else
+        {
+            used->insert( *iter );
+            store->erase( iter );
+        }
     }
 
     template< class T >
     T &allocate()
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             return Singleton::allocate()->taskAllocate( task ).get< T >();
         }
-        return iter->second.get< T >();
+        return ref_ptr->get< T >();
     }
 
     void send()
     {
-        if( store.end() == iter )
+        if( nullptr == ref_ptr )
         {
             Singleton::allocate()->taskSend( task );
             return;
         }
-        used.insert( *iter );
-        store.erase( iter );
+        ref_ptr = nullptr;
+        if( isSingle() )
+        {
+            single_store_valid = false;
+        }
+        else
+        {
+            used->insert( *iter );
+            store->erase( iter );
+        }
     }
 
     std::unordered_map< port_key_t, DataRef >::iterator begin()
     {
-        return store.begin();
+        assert( ! isSingle() );
+        return store->begin();
     }
 
     std::unordered_map< port_key_t, DataRef >::iterator end()
     {
-        return store.end();
+        assert( ! isSingle() );
+        return store->end();
     }
 
     bool has( const port_key_t &name ) const
     {
-        return store.end() != store.find( name );
+        assert( ! isSingle() );
+        return store->end() != store->find( name );
     }
 
     std::unordered_map< port_key_t, DataRef > &getUsed()
     {
-        return used;
+        assert( ! isSingle() );
+        return *used;
+    }
+
+    /** out2in1piece - convert a streaming data of OUT_1PIECE
+     * to a streaming data of IN_1PIECE, so it could be given
+     * to a consumer one shot task to use */
+    StreamingData *out2in1piece()
+    {
+        assert( is1Piece() );
+        type = IN_1PIECE;
+        single_store_valid = true;
+        ref_ptr = &single_store;
+        return this;
+    }
+
+    bool isSent() const
+    {
+        assert( isSingle() && ! isInput() );
+        return ! single_store_valid;
     }
 
 private:
     Task *task;
-    Direction direction;
-    std::unordered_map< port_key_t, DataRef > store;
-    std::unordered_map< port_key_t, DataRef >::iterator iter;
-    std::unordered_map< port_key_t, DataRef > used;
+    Type type;
+    DataRef single_store;
+    bool single_store_valid = false;
+    DataRef *ref_ptr = nullptr;
+    store_map_t::iterator iter;
+    store_map_t *store = nullptr;
+    store_map_t *used = nullptr;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

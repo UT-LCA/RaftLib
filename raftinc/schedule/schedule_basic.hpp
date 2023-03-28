@@ -343,6 +343,7 @@ protected:
 
 #if USE_UT
             auto *tmeta( new PollingWorkerSchedMeta( task, &wg ) );
+            UNUSED( tmeta );
 #else
             auto *tmeta( new PollingWorkerSchedMeta( task ) );
 

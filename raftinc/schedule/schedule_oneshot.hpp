@@ -185,6 +185,7 @@ protected:
 
 #if USE_UT
         auto *tmeta( new OneShotSchedMeta( task, &wg, true ) );
+        UNUSED( tmeta );
 #else
         auto *tmeta( new OneShotSchedMeta( task,
 #if USE_QTHREAD
@@ -209,6 +210,37 @@ protected:
     {
         auto *t( static_cast< OneShotTask* >( task ) );
         Kernel *mykernel( task->kernel );
+        if( 0 == mykernel->output.size() )
+        {
+            return;
+        }
+        if( 1 == mykernel->output.size() )
+        {
+            if( ! t->stream_out->isSent() )
+            {
+                return;
+            }
+            const auto *other_pi(
+                    mykernel->output.begin()->second.other_port );
+#if USE_QTHREAD
+            auto *tmeta(
+                    static_cast< OneShotSchedMeta* >( task->sched_meta ) );
+            shot_kernel( other_pi->my_kernel, t->stream_out, tmeta->group_id );
+#else
+            shot_kernel( other_pi->my_kernel, t->stream_out );
+#endif
+            DataRef ref;
+            while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
+            {
+#if USE_QTHREAD
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
+                             tmeta->group_id );
+#else
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
+#endif
+            }
+            return;
+        }
         for( auto &p : t->stream_out->getUsed() )
         {
             const auto *other_pi( mykernel->output[ p.first ].other_port );
@@ -246,6 +278,46 @@ protected:
     }
 
     void shot_kernel( Kernel *kernel,
+                      StreamingData *src_sd,
+                      int64_t gid = -1 )
+    {
+        OneShotTask *tnext = new OneShotTask();
+        tnext->kernel = kernel;
+        tnext->type = ONE_SHOT;
+
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        tnext->id = task_id++;
+        tasks_mutex.unlock();
+
+        tnext->stream_in = src_sd->out2in1piece();
+        Singleton::allocate()->taskInit( tnext );
+
+        UNUSED( gid );
+#if USE_UT
+        auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
+        UNUSED( tmeta );
+#else
+#if USE_QTHREAD
+        auto *tmeta( new OneShotSchedMeta( tnext, gid ) );
+#else
+        auto *tmeta( new OneShotSchedMeta( tnext ) );
+#endif /* END USE_QTHREAD */
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        /* insert into tasks linked list */
+        tmeta->next = tasks->next;
+        tasks->next = tmeta;
+        /** we got here, unlock **/
+        tasks_mutex.unlock();
+#endif
+    }
+
+    void shot_kernel( Kernel *kernel,
                       const port_key_t &dst_name,
                       DataRef &ref,
                       int64_t gid = -1 )
@@ -261,13 +333,15 @@ protected:
         tnext->id = task_id++;
         tasks_mutex.unlock();
 
-        tnext->stream_in = new StreamingData( tnext, StreamingData::IN );
+        tnext->stream_in =
+            new StreamingData( tnext, StreamingData::IN_1PIECE );
         tnext->stream_in->set( dst_name, ref );
         Singleton::allocate()->taskInit( tnext );
 
         UNUSED( gid );
 #if USE_UT
         auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
+        UNUSED( tmeta );
 #else
 #if USE_QTHREAD
         auto *tmeta( new OneShotSchedMeta( tnext, gid ) );
