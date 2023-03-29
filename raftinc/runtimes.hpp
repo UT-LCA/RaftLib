@@ -55,9 +55,9 @@ public:
 
 using RuntimeFIFO = RuntimeFIFOTemp< PartitionBasic, ScheduleBasic >;
 using RuntimeFIFOOneShot = RuntimeFIFOTemp< PartitionBasic, ScheduleOneShot >;
+using RuntimeFIFOCV = RuntimeFIFOTemp< PartitionBasic, ScheduleCV >;
 using RuntimeFIFOGroup = RuntimeFIFOTemp< PartitionPriority, ScheduleBasic >;
-using RuntimeFIFOGroupOneShot =
-    RuntimeFIFOTemp< PartitionPriority, ScheduleOneShot >;
+using RuntimeFIFOGroupCV = RuntimeFIFOTemp< PartitionPriority, ScheduleCV >;
 
 } /** end namespace raft **/
 

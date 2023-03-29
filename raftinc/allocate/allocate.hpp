@@ -76,6 +76,7 @@ public:
     virtual StreamingData &getBufOut( Task *task ) = 0;
 
     virtual void taskInit( Task *task ) = 0;
+    virtual void registerConsumer( Task *task ) = 0;
     virtual void commit( Task *task ) = 0;
     virtual void invalidateOutputs( Task *task ) = 0;
     virtual bool taskHasInputPorts( Task *task ) = 0;

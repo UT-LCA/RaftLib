@@ -64,9 +64,11 @@ struct TaskFIFOPort
     FIFOFunctor *functor;
     const int nfifos;
     int idx;
+    TaskSchedMeta **tasks;
     TaskFIFOPort( int n ) : nfifos( n )
     {
         fifos = new FIFO*[ n ];
+        tasks = new TaskSchedMeta*[ n ](); // serve as the cache of fifo_tmeta
     }
     /* define the following constructor to allow unordered_map index access */
     TaskFIFOPort() : nfifos( 0 )
@@ -85,6 +87,10 @@ struct TaskFIFOPort
         if( nullptr != fifos )
         {
             delete[] fifos;
+        }
+        if( nullptr != tasks )
+        {
+            delete[] tasks;
         }
     }
 };
@@ -197,6 +203,8 @@ public:
                                 INITIAL_ALLOC_SIZE,
                                 ALLOC_ALIGN_WIDTH,
                                 nullptr );
+                    /* allocate the slot earlier to avoid fifo_tmeta resize */
+                    fifo_tmeta[ fifos->at( i ) ] = nullptr;
                 }
             }
             /* allocate one more fifo as the mutex-protected fifo */
@@ -205,6 +213,8 @@ public:
                         a )->make_new_fifo_mutexed( INITIAL_ALLOC_SIZE,
                                                     ALLOC_ALIGN_WIDTH,
                                                     nullptr );
+            /* allocate the slot earlier to avoid fifo_tmeta resize */
+            fifo_tmeta[ fifos->back() ] = nullptr;
             a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
         };
 
@@ -262,6 +272,13 @@ public:
             auto *t( static_cast< OneShotTask* >( task ) );
             oneshot_init( t );
         }
+    }
+
+    virtual void registerConsumer( Task *task )
+    {
+        assert( POLLING_WORKER == task->type );
+        auto *t( static_cast< PollingWorker* >( task ) );
+        polling_worker_register_consumer( t );
     }
 
     virtual void commit( Task *task )
@@ -348,6 +365,15 @@ public:
         auto *port( nullptr == tmeta->selected_out ?
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->push( port->fifos[ port->idx ], item );
+        // wake up the worker waiting for data
+        if( nullptr == port->tasks[ port->idx ] )
+        {
+            port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
+        }
+        if( nullptr != port->tasks[ port->idx ] )
+        {
+            port->tasks[ port->idx ]->wakeup();
+        }
         port->idx = ( port->idx + 1 ) % port->nfifos;
     }
 
@@ -365,6 +391,15 @@ public:
         auto *port( nullptr == tmeta->selected_out ?
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->send( port->fifos[ port->idx ] );
+        // wake up the worker waiting for data
+        if( nullptr == port->tasks[ port->idx ] )
+        {
+            port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
+        }
+        if( nullptr != port->tasks[ port->idx ] )
+        {
+            port->tasks[ port->idx ]->wakeup();
+        }
         port->idx = ( port->idx + 1 ) % port->nfifos;
     }
 
@@ -488,8 +523,8 @@ protected:
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         if( 0 == tmeta->ports_in.size() )
         {
-           /** only output ports, keep calling till exits **/
-           return( true );
+            /** only output ports, keep calling till exits **/
+            return( true );
         }
 
         if( null_port_value != name )
@@ -736,6 +771,22 @@ protected:
         }
     }
 
+    inline void polling_worker_register_consumer( PollingWorker *worker )
+    {
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+
+        auto &input_ports( tmeta->ports_in );
+        for( auto &port : input_ports )
+        {
+            auto *fifos( port.fifos );
+            auto nfifos( port.nfifos );
+            for( int i = 0; nfifos > i; ++i )
+            {
+                fifo_tmeta[ fifos[ i ] ] = worker->sched_meta;
+            }
+        }
+    }
+
     /**
      * kernel_commit - commit the data involved by the kernel compute().
      * @param kernel - raft::Kernel*
@@ -785,6 +836,11 @@ protected:
             for( int i( 0 ); port.nfifos > i; ++i )
             {
                 port.fifos[ i ]->invalidate();
+                // wake up workers waiting on termination
+                if( nullptr != port.tasks[ i ] )
+                {
+                    port.tasks[ i ]->wakeup();
+                }
             }
         }
     }
@@ -825,6 +881,8 @@ protected:
      * keeps a list of all currently allocated FIFO objects
      */
     std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
+
+    std::unordered_map< FIFO*, TaskSchedMeta* > fifo_tmeta;
 
     volatile bool exited = false;
     volatile bool ready = false;

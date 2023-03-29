@@ -109,6 +109,11 @@ struct UTSchedMeta : public TaskSchedMeta
     {
     }
 
+    virtual void done()
+    {
+        waitgroup_done( wg );
+    }
+
     int8_t run_count;
     waitgroup_t *wg;
 };
@@ -274,9 +279,7 @@ public:
     {
         Singleton::allocate()->invalidateOutputs( task );
 #if USE_UT
-        auto *tmeta(
-                static_cast< PollingWorkerSchedMeta* >( task->sched_meta ) );
-        waitgroup_done( tmeta->wg );
+        task->sched_meta->done();
 #else
         task->sched_meta->finished = true;
 #endif
@@ -305,7 +308,7 @@ protected:
 #endif
         for( auto * const k : container )
         {
-            start_polling_worker( k );
+            (this)->start_polling_worker( k );
         }
         kernels.release();
     }
@@ -336,30 +339,32 @@ protected:
             task->id = worker_id + i;
             task->clone_id = i;
 
-            // this scheduler assume 1 pollingworker per kernel
-            // so we just take the per-port FIFO as the task FIFO
             //assert( Singleton::allocate()->isReady() );
             Singleton::allocate()->taskInit( task );
 
-#if USE_UT
-            auto *tmeta( new PollingWorkerSchedMeta( task, &wg ) );
-            UNUSED( tmeta );
-#else
-            auto *tmeta( new PollingWorkerSchedMeta( task ) );
-
-            while( ! tasks_mutex.try_lock() )
-            {
-                raft::yield();
-            }
-            /* insert into tasks linked list */
-            tmeta->next = tasks->next;
-            tasks->next = tmeta;
-            /** we got here, unlock **/
-            tasks_mutex.unlock();
-#endif
+            (this)->make_new_sched_meta( task );
         }
 
         return;
+    }
+
+    virtual void make_new_sched_meta( Task *task )
+    {
+#if USE_UT
+        auto *tmeta( new PollingWorkerSchedMeta( task, &wg ) );
+        UNUSED( tmeta );
+#else
+        auto *tmeta( new PollingWorkerSchedMeta( task ) );
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        /* insert into tasks linked list */
+        tmeta->next = tasks->next;
+        tasks->next = tmeta;
+        /** we got here, unlock **/
+        tasks_mutex.unlock();
+#endif
     }
 
     /** kernel set **/

@@ -35,6 +35,10 @@ struct TaskSchedMeta
 {
     TaskSchedMeta( Task *the_task = nullptr ) : task( the_task ) {}
     virtual ~TaskSchedMeta() = default;
+    /* wakeup - the interface for Allocate to wakeup condition-waiting task */
+    virtual void wakeup() {}
+    /* done - the interface for UT variants to post waitgroup_done */
+    virtual void done() {}
     Task * const task;
     bool finished = false;
     TaskSchedMeta * volatile next = nullptr;
