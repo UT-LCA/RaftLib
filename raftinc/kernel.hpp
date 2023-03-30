@@ -334,6 +334,18 @@ public:
 
     trigger::value_t sched_trigger = trigger::any_port;
 
+    using AllocMeta = TaskAllocMeta;
+
+    void setAllocMeta( AllocMeta *meta )
+    {
+        alloc_meta = meta;
+    }
+
+    AllocMeta *getAllocMeta() const
+    {
+        return alloc_meta;
+    }
+
 protected:
 
     /** in namespace raft **/
@@ -499,6 +511,9 @@ private:
 
     int clone_factor = 1;
     /* a hint from programmer about how many polling workers for this kernel */
+
+    AllocMeta *alloc_meta;
+    /* a pointer to the meta data that allocator wants to store per-kernel */
 
 }; /** end Kernel decl **/
 

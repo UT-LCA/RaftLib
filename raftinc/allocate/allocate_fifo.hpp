@@ -73,6 +73,8 @@ struct TaskFIFOPort
     const int nfifos;
     int idx;
     TaskSchedMeta **tasks;
+    bool readonly = false;
+    /* when in Kernel::AllocMeta, there are multi-readers but avoid writing */
     TaskFIFOPort( int n ) : nfifos( n )
     {
         fifos = new FIFO*[ n ];
@@ -90,7 +92,7 @@ struct TaskFIFOPort
         other.fifos = nullptr;
     }
     TaskFIFOPort( const TaskFIFOPort &other ) = delete;
-    ~TaskFIFOPort()
+    virtual ~TaskFIFOPort()
     {
         if( nullptr != fifos )
         {
@@ -100,6 +102,30 @@ struct TaskFIFOPort
         {
             delete[] tasks;
         }
+    }
+    virtual bool wakupConsumer()
+    {
+        if( readonly )
+        {
+            return true;
+        }
+        // wake up the worker waiting for data
+        if( nullptr != tasks[ idx ] )
+        {
+            tasks[ idx ]->wakeup();
+            return true;
+        }
+        return false;
+        /* let AllocateFIFO knows that it should looking up fifo_tmeta */
+    }
+    virtual void nextFIFO()
+    {
+        if( readonly )
+        {
+            return;
+        }
+        // select next fifo in Round-Robin manner
+        idx = ( idx + 1 ) % nfifos;
     }
 };
 
@@ -211,6 +237,25 @@ public:
 
         GraphTools::BFS( dag.getSourceKernels(), func );
 
+        /* create per-kernel alloc_meta for repeated use by oneshot tasks */
+        for( auto *k : dag.getKernels() )
+        {
+            auto *tmeta( new TaskFIFOAllocMeta() );
+            k->setAllocMeta( tmeta );
+
+            for( auto &p : k->output )
+            {
+                tmeta->ports_out.emplace_back( 1 );
+                tmeta->name2port_out.emplace( p.first,
+                                              &tmeta->ports_out.back() );
+                auto &port( tmeta->ports_out.back() );
+                port.readonly = true; /* avoid concurrent writes to the port */
+                port.idx = 0;
+                port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
+                port.functor = p.second.runtime_info.fifo_functor;
+            }
+        }
+
         (this)->ready = true;
         return dag;
     }
@@ -242,7 +287,6 @@ public:
     virtual bool dataInReady( Task *task, const port_key_t &name )
     {
         return task_has_input_data( task );
-        //return kernel_has_input_data( task->kernel );
     }
 
     virtual bool bufOutReady( Task *task, const port_key_t &name )
@@ -319,6 +363,7 @@ public:
 
     virtual void select( Task *task, const port_key_t &name, bool is_in )
     {
+        //assert( task->alloc_meta != task->kernel->getAllocMeta() );
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         if( is_in )
         {
@@ -376,15 +421,11 @@ public:
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->push( port->fifos[ port->idx ], item );
         // wake up the worker waiting for data
-        if( nullptr == port->tasks[ port->idx ] )
+        if( ! port->wakupConsumer() )
         {
             port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
         }
-        if( nullptr != port->tasks[ port->idx ] )
-        {
-            port->tasks[ port->idx ]->wakeup();
-        }
-        port->idx = ( port->idx + 1 ) % port->nfifos;
+        port->nextFIFO();
     }
 
     virtual DataRef taskAllocate( Task *task )
@@ -402,15 +443,11 @@ public:
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->send( port->fifos[ port->idx ] );
         // wake up the worker waiting for data
-        if( nullptr == port->tasks[ port->idx ] )
+        if( ! port->wakupConsumer() )
         {
             port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
         }
-        if( nullptr != port->tasks[ port->idx ] )
-        {
-            port->tasks[ port->idx ]->wakeup();
-        }
-        port->idx = ( port->idx + 1 ) % port->nfifos;
+        port->nextFIFO();
     }
 
     virtual DataRef portPop( const PortInfo *pi )
@@ -765,6 +802,7 @@ protected:
                 tcache_alloc( &__perthread_streaming_data_pt ) );
         oneshot->stream_out = new ( stream_out_ptr_tmp ) StreamingData(
                 oneshot, StreamingData::OUT_1PIECE );
+        //FIXME: here OUT_1PIECE assumes only one output port
         if( alloc_input )
         {
             auto *stream_in_ptr_tmp(
@@ -775,29 +813,22 @@ protected:
 #else
         oneshot->stream_out = new StreamingData( oneshot,
                                                  StreamingData::OUT_1PIECE );
+        //FIXME: here OUT_1PIECE assumes only one output port
         if( alloc_input )
         {
             oneshot->stream_in = new StreamingData( oneshot,
                                                     StreamingData::IN_1PIECE );
         }
 #endif
-        //FIXME: here OUT_1PIECE assumes only one output port
         auto &output_ports( oneshot->kernel->output );
 
-        auto *tmeta( new TaskFIFOAllocMeta() );
-        oneshot->alloc_meta = tmeta;
+        oneshot->alloc_meta = oneshot->kernel->getAllocMeta();
 
         for( auto &p : output_ports )
         {
             oneshot->stream_out->set(
                     p.first, get_FIFOFunctor( p.second )->oneshot_allocate() );
             /* TODO: needs to find a place to release the malloced data */
-            tmeta->ports_out.emplace_back( 1 );
-            tmeta->name2port_out.emplace( p.first, &tmeta->ports_out.back() );
-            auto &port( tmeta->ports_out.back() );
-            port.idx = 0;
-            port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
-            port.functor = p.second.runtime_info.fifo_functor;
         }
     }
 
@@ -925,6 +956,7 @@ protected:
     std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
 
     std::unordered_map< FIFO*, TaskSchedMeta* > fifo_tmeta;
+
 #if UT_FOUND
     struct slab streaming_data_slab;
     struct tcache *streaming_data_tcache;

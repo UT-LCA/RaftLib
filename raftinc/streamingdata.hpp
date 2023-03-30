@@ -191,6 +191,8 @@ public:
         ref_ptr = ( store->end() == iter ) ? nullptr : &iter->second;
         if( ! is1Piece() )
         {
+            //TODO: if multiple output ports for a oneshot task using
+            // Kernel::AllocMeta, this gonna cause multiple-writers
             Singleton::allocate()->select( task, name_val, isInput() );
         }
         return *this;
