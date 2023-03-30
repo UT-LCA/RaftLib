@@ -33,6 +33,10 @@
 
 namespace raft {
 
+#if UT_FOUND
+inline __thread tcache_perthread __perthread_oneshot_task_pt;
+#endif
+
 /* cannot just inherit from StdThreadSchedMeta because is_source
  * must be initialized before th thread start executing */
 struct OneShotStdSchedMeta : public TaskSchedMeta
@@ -47,6 +51,8 @@ struct OneShotStdSchedMeta : public TaskSchedMeta
     virtual ~OneShotStdSchedMeta()
     {
         th.join();
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
+        delete oneshot;
     }
 
     volatile bool is_source;
@@ -74,6 +80,8 @@ struct OneShotQTSchedMeta : public TaskSchedMeta
 
     virtual ~OneShotQTSchedMeta()
     {
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
+        delete oneshot;
     }
 
     static aligned_t run( void *data )
@@ -102,6 +110,8 @@ struct OneShotUTSchedMeta : public TaskSchedMeta
 
     virtual ~OneShotUTSchedMeta()
     {
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
+        tcache_free( &__perthread_oneshot_task_pt, oneshot );
     }
 
     waitgroup_t *wg;
@@ -121,11 +131,31 @@ using OneShotSchedMeta = struct OneShotStdSchedMeta;
 class ScheduleOneShot : public ScheduleBasic
 {
 public:
-    ScheduleOneShot( DAG &dag, Allocate *the_alloc ) :
-        ScheduleBasic( dag, the_alloc )
+    ScheduleOneShot() : ScheduleBasic()
     {
     }
     virtual ~ScheduleOneShot() = default;
+
+    virtual bool doesOneShot() const
+    {
+        return true;
+    }
+
+#if UT_FOUND
+    virtual void globalInitialize()
+    {
+        slab_create( &oneshot_task_slab, "oneshottask",
+                     sizeof( OneShotTask ), 0 );
+        oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab,
+                                                  TCACHE_DEFAULT_MAG_SIZE );
+    }
+
+    virtual void perthreadInitialize()
+    {
+        tcache_init_perthread( oneshot_task_tcache,
+                               &__perthread_oneshot_task_pt );
+    }
+#endif
 
     virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
@@ -146,6 +176,7 @@ public:
 #if USE_UT
         auto *tmeta( static_cast< OneShotSchedMeta* >( task->sched_meta ) );
         waitgroup_done( tmeta->wg );
+        delete tmeta;
 #else
         task->sched_meta->finished = true;
         /* mark finished here because oneshot task does not postexit() */
@@ -156,17 +187,21 @@ protected:
 
     void start_tasks()
     {
-        auto &container( source_kernels.acquire() );
+        auto &container( source_kernels );
         for( auto * const k : container )
         {
             start_source_kernel_task( k );
         }
-        source_kernels.release();
     }
 
     void start_source_kernel_task( Kernel *kernel )
     {
+#if USE_UT
+        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
+        OneShotTask *task = new ( task_ptr_tmp ) OneShotTask();
+#else
         OneShotTask *task = new OneShotTask();
+#endif
         task->kernel = kernel;
         task->type = ONE_SHOT;
 
@@ -281,7 +316,12 @@ protected:
                       StreamingData *src_sd,
                       int64_t gid = -1 )
     {
+#if USE_UT
+        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
+        OneShotTask *tnext = new ( task_ptr_tmp ) OneShotTask();
+#else
         OneShotTask *tnext = new OneShotTask();
+#endif
         tnext->kernel = kernel;
         tnext->type = ONE_SHOT;
 
@@ -292,8 +332,8 @@ protected:
         tnext->id = task_id++;
         tasks_mutex.unlock();
 
-        tnext->stream_in = src_sd->out2in1piece();
         Singleton::allocate()->taskInit( tnext );
+        tnext->stream_in = src_sd->out2in1piece();
 
         UNUSED( gid );
 #if USE_UT
@@ -322,7 +362,12 @@ protected:
                       DataRef &ref,
                       int64_t gid = -1 )
     {
+#if USE_UT
+        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
+        OneShotTask *tnext = new ( task_ptr_tmp ) OneShotTask();
+#else
         OneShotTask *tnext = new OneShotTask();
+#endif
         tnext->kernel = kernel;
         tnext->type = ONE_SHOT;
 
@@ -333,10 +378,8 @@ protected:
         tnext->id = task_id++;
         tasks_mutex.unlock();
 
-        tnext->stream_in =
-            new StreamingData( tnext, StreamingData::IN_1PIECE );
+        Singleton::allocate()->taskInit( tnext, true );
         tnext->stream_in->set( dst_name, ref );
-        Singleton::allocate()->taskInit( tnext );
 
         UNUSED( gid );
 #if USE_UT
@@ -361,6 +404,10 @@ protected:
     }
 
     volatile int64_t src_id = 0;
+#if UT_FOUND
+    struct slab oneshot_task_slab;
+    struct tcache *oneshot_task_tcache;
+#endif
 };
 
 } /** end namespace raft **/

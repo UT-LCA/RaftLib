@@ -29,6 +29,10 @@
 #include <vector>
 #include <unordered_set>
 
+#if UT_FOUND
+#include <ut>
+#endif
+
 #include "raftinc/defs.hpp"
 #include "raftinc/dag.hpp"
 #include "raftinc/kernel.hpp"
@@ -57,6 +61,10 @@
 
 namespace raft
 {
+
+#if UT_FOUND
+inline __thread tcache_perthread __perthread_streaming_data_pt;
+#endif
 
 struct TaskFIFOPort
 {
@@ -122,11 +130,7 @@ public:
      * source_kernels from the DAG object.
      * @param dag - raft::DAG&
      */
-    AllocateFIFO( DAG &dag ) :
-        Allocate(), kernels( dag.getKernels() ),
-        source_kernels( dag.getSourceKernels() )
-    {
-    }
+    AllocateFIFO() : Allocate() {}
 
     /**
      * destructor
@@ -143,19 +147,6 @@ public:
              * is indexed by both port_info */
             p.second->clear();
         }
-    }
-
-    /**
-     * runThread - will run as a thread.
-     */
-    virtual void runThread()
-    {
-        /** launch allocator in a thread **/
-        std::thread alloc_thread( [&](){
-            (this)->allocate();
-            /* thread exit after allocating initial FIFOs */
-            (this)->exited = true;
-        } );
     }
 
     /**
@@ -176,7 +167,7 @@ public:
         return exited;
     }
 
-    virtual void allocate()
+    virtual DAG &allocate( DAG &dag )
     {
         auto func = [ & ]( PortInfo &a, PortInfo &b, void *data )
         {
@@ -218,16 +209,35 @@ public:
             a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
         };
 
-        GraphTools::BFS( (this)->source_kernels, func );
+        GraphTools::BFS( dag.getSourceKernels(), func );
 
         (this)->ready = true;
-    }
-
-    virtual DAG &allocate( DAG &dag )
-    {
-        allocate();
         return dag;
     }
+
+#if UT_FOUND
+    virtual void globalInitialize()
+    {
+        if( ! Singleton::schedule()->doesOneShot() )
+        {
+            return;
+        }
+        slab_create( &streaming_data_slab, "streamingdata",
+                     sizeof( StreamingData ), 0 );
+        streaming_data_tcache = slab_create_tcache( &streaming_data_slab,
+                                                    TCACHE_DEFAULT_MAG_SIZE );
+    }
+
+    virtual void perthreadInitialize()
+    {
+        if( ! Singleton::schedule()->doesOneShot() )
+        {
+            return;
+        }
+        tcache_init_perthread( streaming_data_tcache,
+                               &__perthread_streaming_data_pt );
+    }
+#endif
 
     virtual bool dataInReady( Task *task, const port_key_t &name )
     {
@@ -260,7 +270,7 @@ public:
         return task_pack_output_buf( task );
     }
 
-    virtual void taskInit( Task *task )
+    virtual void taskInit( Task *task, bool alloc_input )
     {
         if( POLLING_WORKER == task->type )
         {
@@ -270,7 +280,7 @@ public:
         else if( ONE_SHOT == task->type )
         {
             auto *t( static_cast< OneShotTask* >( task ) );
-            oneshot_init( t );
+            oneshot_init( t, alloc_input );
         }
     }
 
@@ -747,10 +757,30 @@ protected:
         }
     }
 
-    inline void oneshot_init( OneShotTask *oneshot )
+    inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
     {
+        oneshot->stream_in = nullptr;
+#if USE_UT
+        auto *stream_out_ptr_tmp(
+                tcache_alloc( &__perthread_streaming_data_pt ) );
+        oneshot->stream_out = new ( stream_out_ptr_tmp ) StreamingData(
+                oneshot, StreamingData::OUT_1PIECE );
+        if( alloc_input )
+        {
+            auto *stream_in_ptr_tmp(
+                    tcache_alloc( &__perthread_streaming_data_pt ) );
+            oneshot->stream_in = new ( stream_in_ptr_tmp ) StreamingData(
+                    oneshot, StreamingData::IN_1PIECE );
+        }
+#else
         oneshot->stream_out = new StreamingData( oneshot,
                                                  StreamingData::OUT_1PIECE );
+        if( alloc_input )
+        {
+            oneshot->stream_in = new StreamingData( oneshot,
+                                                    StreamingData::IN_1PIECE );
+        }
+#endif
         //FIXME: here OUT_1PIECE assumes only one output port
         auto &output_ports( oneshot->kernel->output );
 
@@ -768,6 +798,18 @@ protected:
             port.idx = 0;
             port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
             port.functor = p.second.runtime_info.fifo_functor;
+        }
+    }
+
+    static inline void oneshot_commit( OneShotTask *oneshot )
+    {
+        if( nullptr != oneshot->stream_in )
+        {
+#if USE_UT
+            tcache_free( &__perthread_streaming_data_pt, oneshot->stream_in );
+#else
+            delete oneshot->stream_in;
+#endif
         }
     }
 
@@ -821,6 +863,10 @@ protected:
         {
             return;
         }
+        if( ONE_SHOT == task->type )
+        {
+            oneshot_commit( static_cast< OneShotTask* >( task ) );
+        }
     }
 
     /**
@@ -873,16 +919,16 @@ protected:
         return false;
     }
 
-    /** both convenience structs, hold exactly what the names say **/
-    kernelset_t &kernels;
-    kernelset_t &source_kernels;
-
     /**
      * keeps a list of all currently allocated FIFO objects
      */
     std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
 
     std::unordered_map< FIFO*, TaskSchedMeta* > fifo_tmeta;
+#if UT_FOUND
+    struct slab streaming_data_slab;
+    struct tcache *streaming_data_tcache;
+#endif
 
     volatile bool exited = false;
     volatile bool ready = false;

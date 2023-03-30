@@ -32,6 +32,8 @@ namespace raft
 struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
 {
 
+    virtual ~TaskImpl() = default;
+
     virtual bool pop( const port_name_t &portname, bool dryrun )
     {
         if( dryrun )

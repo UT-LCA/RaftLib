@@ -20,6 +20,10 @@
 #ifndef RAFT_RUNTIMES_HPP
 #define RAFT_RUNTIMES_HPP  1
 
+#if UT_FOUND
+#include <ut>
+#endif
+
 #include "raftinc/dag.hpp"
 #include "raftinc/runtime.hpp"
 #include "raftinc/partition/partitioners.hpp"
@@ -42,14 +46,50 @@ public:
     virtual void run()
     {
         PARTITIONER partitioner;
+        AllocateFIFO allocator;
+        SCHEDULER scheduler;
+
+#if USE_UT
+        runtime_set_initializers( global_initializer,
+                                  perthread_initializer,
+                                  late_initializer );
+        const auto ret_val( runtime_initialize( NULL ) );
+        // with cfg_path set to NULL, libut would getenv("LIBUT_CFG")
+        if( 0 != ret_val )
+        {
+            std::cerr << "failure to initialize libut runtime, existing\n";
+            exit( EXIT_FAILURE );
+        }
+#endif
         auto &dag_partitioned( partitioner.partition( dag ) );
 
-        AllocateFIFO allocator( dag_partitioned );
         auto &dag_allocated( allocator.allocate( dag_partitioned ) );
 
-        SCHEDULER scheduler( dag_allocated, &allocator );
-        scheduler.schedule();
+        scheduler.schedule( dag_allocated );
     }
+
+protected:
+
+#if UT_FOUND
+    static int global_initializer()
+    {
+        Singleton::allocate()->globalInitialize();
+        Singleton::schedule()->globalInitialize();
+        return 0;
+    }
+
+    static int perthread_initializer()
+    {
+        Singleton::allocate()->perthreadInitialize();
+        Singleton::schedule()->perthreadInitialize();
+        return 0;
+    }
+
+    static int late_initializer()
+    {
+        return 0;
+    }
+#endif
 
 };
 

@@ -128,8 +128,7 @@ using CVSchedMeta = struct CVStdSchedMeta;
 class ScheduleCV : public ScheduleBasic
 {
 public:
-    ScheduleCV( DAG &dag, Allocate *the_alloc ) :
-        ScheduleBasic( dag, the_alloc )
+    ScheduleCV() : ScheduleBasic()
     {
     }
     virtual ~ScheduleCV() = default;

@@ -51,6 +51,8 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
     TaskAllocMeta *alloc_meta;
     /* for allocator to store per-task meta data, thread-safe access */
 
+    virtual ~Task() = default;
+
     virtual kstatus::value_t exe() = 0;
 
     virtual bool pop( const port_name_t &portname, bool dryrun ) = 0;

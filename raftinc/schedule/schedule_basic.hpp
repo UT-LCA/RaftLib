@@ -55,6 +55,8 @@ struct StdThreadSchedMeta : public TaskSchedMeta
     virtual ~StdThreadSchedMeta()
     {
         th.join();
+        auto *worker( static_cast< PollingWorker* >( task ) );
+        delete worker;
     }
 
     std::thread th;
@@ -81,6 +83,8 @@ struct QThreadSchedMeta : public TaskSchedMeta
 
     virtual ~QThreadSchedMeta()
     {
+        auto *worker( static_cast< PollingWorker* >( task ) );
+        delete worker;
     }
 
     static aligned_t run( void *data )
@@ -107,6 +111,8 @@ struct UTSchedMeta : public TaskSchedMeta
 
     virtual ~UTSchedMeta()
     {
+        auto *worker( static_cast< PollingWorker* >( task ) );
+        delete worker;
     }
 
     virtual void done()
@@ -131,19 +137,9 @@ using PollingWorkerSchedMeta = struct StdThreadSchedMeta;
 class ScheduleBasic : public Schedule
 {
 public:
-    ScheduleBasic( DAG &dag, Allocate *the_alloc ) :
-        Schedule(), kernels( dag.getKernels() ),
-        source_kernels( dag.getSourceKernels() ),
-        sink_kernels( dag.getSinkKernels() )
+    ScheduleBasic() : Schedule()
     {
 #if USE_UT
-        const auto ret_val( runtime_initialize( NULL ) );
-        // with cfg_path set to NULL, libut would getenv("LIBUT_CFG")
-        if( 0 != ret_val )
-        {
-            std::cerr << "failure to initialize libut runtime, existing\n";
-            exit( EXIT_FAILURE );
-        }
         waitgroup_init( &wg );
 #elif USE_QTHREAD
         const auto ret_val( qthread_initialize() );
@@ -167,8 +163,11 @@ public:
      * kernels.  Implementation specific so it
      * is purely virtual.
      */
-    virtual void schedule()
+    virtual void schedule( DAG &dag )
     {
+        kernels = dag.getKernels();
+        source_kernels = dag.getSourceKernels();
+        sink_kernels = dag.getSinkKernels();
 #if USE_UT
         runtime_start( static_wrapper, this );
 #else
@@ -297,7 +296,7 @@ protected:
 
     virtual void start_tasks()
     {
-        auto &container( kernels.acquire() );
+        auto &container( kernels );
 #if USE_UT
         std::size_t ntasks = 0;
         for( auto * const k : container )
@@ -310,7 +309,6 @@ protected:
         {
             (this)->start_polling_worker( k );
         }
-        kernels.release();
     }
 
     virtual void start_polling_worker( Kernel * const kernel )
@@ -368,9 +366,9 @@ protected:
     }
 
     /** kernel set **/
-    kernelkeeper kernels;
-    kernelkeeper source_kernels;
-    kernelkeeper sink_kernels;
+    kernelset_t kernels;
+    kernelset_t source_kernels;
+    kernelset_t sink_kernels;
 #if USE_UT
     waitgroup_t wg;
 #endif

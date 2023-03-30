@@ -56,6 +56,16 @@ public:
     {
     }
 
+#if UT_FOUND
+    virtual void globalInitialize()
+    {
+    }
+
+    virtual void perthreadInitialize()
+    {
+    }
+#endif
+
     virtual bool isReady() const
     {
         return true;
@@ -75,7 +85,7 @@ public:
     virtual StreamingData &getDataIn( Task *task ) = 0;
     virtual StreamingData &getBufOut( Task *task ) = 0;
 
-    virtual void taskInit( Task *task ) = 0;
+    virtual void taskInit( Task *task, bool alloc_input = false ) = 0;
     virtual void registerConsumer( Task *task ) = 0;
     virtual void commit( Task *task ) = 0;
     virtual void invalidateOutputs( Task *task ) = 0;

@@ -57,7 +57,24 @@ public:
 
     virtual ~Schedule() = default;
 
-    virtual void schedule() = 0;
+    virtual void schedule()
+    {
+    }
+
+    virtual bool doesOneShot() const
+    {
+        return false;
+    }
+
+#if UT_FOUND
+    virtual void globalInitialize()
+    {
+    }
+
+    virtual void perthreadInitialize()
+    {
+    }
+#endif
 
     /* Task handlers */
 
