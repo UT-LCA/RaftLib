@@ -19,6 +19,8 @@
  */
 #ifndef RAFT_SCHEDULE_SCHEDULE_ONESHOT_HPP
 #define RAFT_SCHEDULE_SCHEDULE_ONESHOT_HPP  1
+#include <atomic>
+
 #include "raftinc/signalhandler.hpp"
 #include "raftinc/rafttypes.hpp"
 #include "raftinc/defs.hpp"
@@ -37,94 +39,35 @@ namespace raft {
 inline __thread tcache_perthread __perthread_oneshot_task_pt;
 #endif
 
-/* cannot just inherit from StdThreadSchedMeta because is_source
- * must be initialized before th thread start executing */
-struct OneShotStdSchedMeta : public TaskSchedMeta
+#if USE_QTHREAD /* group_id not defined in OneShotTask unless USE_QTHREAD */
+struct OneShotQTListNode : public TaskListNode
 {
-    OneShotStdSchedMeta( Task *the_task, bool is_s = false ) :
-        TaskSchedMeta( the_task ), is_source( is_s ), th( [ & ](){
-                (this)->task->sched_meta = this;
-                (this)->task->exe(); } )
+    OneShotQTListNode( Task *the_task ) : TaskListNode( the_task )
     {
-    }
-
-    virtual ~OneShotStdSchedMeta()
-    {
-        th.join();
+        (this)->task->finished = &finished;
         auto *oneshot( static_cast< OneShotTask* >( task ) );
-        delete oneshot;
-    }
-
-    volatile bool is_source;
-    std::thread th;
-    /* map every task to a kthread */
-};
-
-#if QTHREAD_FOUND
-struct OneShotQTSchedMeta : public TaskSchedMeta
-{
-    OneShotQTSchedMeta( Task *the_task, int64_t gid, bool is_s = false ) :
-        TaskSchedMeta( the_task ), is_source( is_s )
-    {
-        task->sched_meta = this;
-        group_id = (0 <= gid) ? gid : task->kernel->getGroup();
-        qthread_spawn( OneShotQTSchedMeta::run,
-                       ( void* ) this,
+        qthread_spawn( QThreadListNode::run,
+                       ( void* ) task,
                        0,
                        0,
                        0,
                        nullptr,
-                       group_id,
+                       (0 <= oneshot->group_id) ? oneshot->group_id :
+                                                  task->kernel->getGroup(),
                        0 );
     }
 
-    virtual ~OneShotQTSchedMeta()
+    virtual ~OneShotQTListNode()
     {
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
-        delete oneshot;
+        delete task;
     }
-
-    static aligned_t run( void *data )
-    {
-        auto * const tmeta( reinterpret_cast< OneShotQTSchedMeta* >( data ) );
-        tmeta->task->exe();
-        return 0;
-    }
-
-    volatile bool is_source;
-    int64_t group_id;
 };
 #endif
 
-#if UT_FOUND
-struct OneShotUTSchedMeta : public TaskSchedMeta
-{
-    OneShotUTSchedMeta(
-            Task *the_task, waitgroup_t *the_wg, bool is_s = false ) :
-        TaskSchedMeta( the_task ), wg( the_wg ), is_source( is_s )
-    {
-        task->sched_meta = this;
-        waitgroup_add( wg, 1 );
-        rt::Spawn( [ & ](){ task->exe(); } );
-    }
-
-    virtual ~OneShotUTSchedMeta()
-    {
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
-        tcache_free( &__perthread_oneshot_task_pt, oneshot );
-    }
-
-    waitgroup_t *wg;
-    bool is_source;
-};
-#endif
-
-#if USE_UT
-using OneShotSchedMeta = struct OneShotUTSchedMeta;
-#elif USE_QTHREAD
-using OneShotSchedMeta = struct OneShotQTSchedMeta;
+#if USE_QTHREAD
+using OneShotListNode = struct OneShotQTListNode;
 #else
-using OneShotSchedMeta = struct OneShotStdSchedMeta;
+using OneShotListNode = struct StdThreadListNode;
 #endif
 
 
@@ -163,9 +106,8 @@ public:
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            auto *tmeta( static_cast< OneShotSchedMeta* >(
-                        task->sched_meta ) );
-            tmeta->is_source = false; /* stop self_iterate() */
+            auto *oneshot( static_cast< OneShotTask* >( task ) );
+            oneshot->is_source = false; /* stop self_iterate() */
         }
     }
 
@@ -174,18 +116,18 @@ public:
         feed_consumers( task );
         self_iterate( task ); /* for source kernels to start a new iteration */
 #if USE_UT
-        auto *tmeta( static_cast< OneShotSchedMeta* >( task->sched_meta ) );
-        waitgroup_done( tmeta->wg );
-        delete tmeta;
+        waitgroup_done( task->wg );
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
+        tcache_free( &__perthread_oneshot_task_pt, oneshot );
 #else
-        task->sched_meta->finished = true;
+        *task->finished = true;
         /* mark finished here because oneshot task does not postexit() */
 #endif
     }
 
 protected:
 
-    void start_tasks()
+    virtual void start_tasks()
     {
         auto &container( source_kernels );
         for( auto * const k : container )
@@ -196,47 +138,20 @@ protected:
 
     void start_source_kernel_task( Kernel *kernel )
     {
-#if USE_UT
-        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
-        OneShotTask *task = new ( task_ptr_tmp ) OneShotTask();
-#else
-        OneShotTask *task = new OneShotTask();
-#endif
+        auto *task( new_an_oneshot() );
+        task->is_source = true;
         task->kernel = kernel;
-        task->type = ONE_SHOT;
 
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        task->id = task_id++;
+        int64_t gid = -1;
+        task->id = task_id.fetch_add( 1, std::memory_order_relaxed );
 #if USE_QTHREAD
-        src_id++;
+        gid = src_id.fetch_add( 1, std::memory_order_relaxed );
 #endif
-        tasks_mutex.unlock();
 
         /* allocate the output buffer */
         Singleton::allocate()->taskInit( task );
 
-#if USE_UT
-        auto *tmeta( new OneShotSchedMeta( task, &wg, true ) );
-        UNUSED( tmeta );
-#else
-        auto *tmeta( new OneShotSchedMeta( task,
-#if USE_QTHREAD
-                                           src_id,
-#endif /* END USE_QTHREAD */
-                                           true ) );
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tmeta->next = tasks->next;
-        tasks->next = tmeta;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
+        run_oneshot( task, gid );
 
         return;
     }
@@ -249,6 +164,10 @@ protected:
         {
             return;
         }
+        int64_t gid = -1;
+#if USE_QTHREAD
+        gid = t->group_id;
+#endif
         if( 1 == mykernel->output.size() )
         {
             if( ! t->stream_out->isSent() )
@@ -257,22 +176,12 @@ protected:
             }
             const auto *other_pi(
                     mykernel->output.begin()->second.other_port );
-#if USE_QTHREAD
-            auto *tmeta(
-                    static_cast< OneShotSchedMeta* >( task->sched_meta ) );
-            shot_kernel( other_pi->my_kernel, t->stream_out, tmeta->group_id );
-#else
-            shot_kernel( other_pi->my_kernel, t->stream_out );
-#endif
+            shot_kernel( other_pi->my_kernel, t->stream_out, gid );
             DataRef ref;
             while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
             {
-#if USE_QTHREAD
                 shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             tmeta->group_id );
-#else
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
-#endif
+                             gid );
             }
             return;
         }
@@ -280,32 +189,21 @@ protected:
         {
             const auto *other_pi( mykernel->output[ p.first ].other_port );
             //TODO: deal with a kernel depends on multiple producers
-#if USE_QTHREAD
-            auto *tmeta(
-                    static_cast< OneShotSchedMeta* >( task->sched_meta ) );
             shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second,
-                         tmeta->group_id );
-#else
-            shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second );
-#endif
+                         gid );
             DataRef ref;
             while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
             {
-#if USE_QTHREAD
                 shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             tmeta->group_id );
-#else
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref );
-#endif
+                             gid );
             }
         }
     }
 
     void self_iterate( Task *task )
     {
-        auto *tmeta( static_cast< OneShotSchedMeta* >(
-                     task->sched_meta ) );
-        if( ! tmeta->is_source )
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
+        if( ! oneshot->is_source )
         {
             return;
         }
@@ -314,100 +212,85 @@ protected:
 
     void shot_kernel( Kernel *kernel,
                       StreamingData *src_sd,
-                      int64_t gid = -1 )
+                      int64_t gid )
     {
-#if USE_UT
-        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
-        OneShotTask *tnext = new ( task_ptr_tmp ) OneShotTask();
-#else
-        OneShotTask *tnext = new OneShotTask();
-#endif
+        auto *tnext( new_an_oneshot() );
+        tnext->is_source = false;
         tnext->kernel = kernel;
-        tnext->type = ONE_SHOT;
 
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        tnext->id = task_id++;
-        tasks_mutex.unlock();
+        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
 
         Singleton::allocate()->taskInit( tnext );
         tnext->stream_in = src_sd->out2in1piece();
 
-        UNUSED( gid );
-#if USE_UT
-        auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
-        UNUSED( tmeta );
-#else
-#if USE_QTHREAD
-        auto *tmeta( new OneShotSchedMeta( tnext, gid ) );
-#else
-        auto *tmeta( new OneShotSchedMeta( tnext ) );
-#endif /* END USE_QTHREAD */
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tmeta->next = tasks->next;
-        tasks->next = tmeta;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
+        run_oneshot( tnext, gid );
     }
 
     void shot_kernel( Kernel *kernel,
                       const port_key_t &dst_name,
                       DataRef &ref,
-                      int64_t gid = -1 )
+                      int64_t gid )
     {
-#if USE_UT
-        auto *task_ptr_tmp = tcache_alloc( &__perthread_oneshot_task_pt );
-        OneShotTask *tnext = new ( task_ptr_tmp ) OneShotTask();
-#else
-        OneShotTask *tnext = new OneShotTask();
-#endif
+        auto *tnext( new_an_oneshot() );
+        tnext->is_source = false;
         tnext->kernel = kernel;
-        tnext->type = ONE_SHOT;
 
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
         }
-        tnext->id = task_id++;
+        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
         tasks_mutex.unlock();
 
         Singleton::allocate()->taskInit( tnext, true );
         tnext->stream_in->set( dst_name, ref );
 
+        run_oneshot( tnext, gid );
+    }
+
+    std::atomic< int64_t > src_id = { 0 };
+#if UT_FOUND
+    struct slab oneshot_task_slab;
+    struct tcache *oneshot_task_tcache;
+#endif
+
+private:
+
+    inline OneShotTask *new_an_oneshot()
+    {
+#if USE_UT
+        auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
+        OneShotTask *oneshot( new ( task_ptr_tmp ) OneShotTask() );
+#else
+        OneShotTask *oneshot( new OneShotTask() );
+#endif
+        return oneshot;
+    }
+
+    inline void run_oneshot( OneShotTask *oneshot, int64_t gid )
+    {
         UNUSED( gid );
 #if USE_UT
-        auto *tmeta( new OneShotSchedMeta( tnext, &wg ) );
-        UNUSED( tmeta );
+        waitgroup_add( &wg, 1 );
+        oneshot->wg = &wg;
+        rt::Spawn( [ oneshot ]() { oneshot->exe(); } );
 #else
 #if USE_QTHREAD
-        auto *tmeta( new OneShotSchedMeta( tnext, gid ) );
-#else
-        auto *tmeta( new OneShotSchedMeta( tnext ) );
-#endif /* END USE_QTHREAD */
+        oneshot->group_id = gid;
+#endif
+        auto *tnode( new OneShotListNode( oneshot ) );
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
         }
         /* insert into tasks linked list */
-        tmeta->next = tasks->next;
-        tasks->next = tmeta;
+        tnode->next = tasks->next;
+        tasks->next = tnode;
         /** we got here, unlock **/
         tasks_mutex.unlock();
 #endif
     }
 
-    volatile int64_t src_id = 0;
-#if UT_FOUND
-    struct slab oneshot_task_slab;
-    struct tcache *oneshot_task_tcache;
-#endif
 };
 
 } /** end namespace raft **/

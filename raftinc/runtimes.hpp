@@ -33,7 +33,7 @@
 namespace raft
 {
 
-template< class PARTITIONER, class SCHEDULER >
+template< class PARTITIONER, class ALLOCATOR, class SCHEDULER >
 class RuntimeFIFOTemp : public RuntimeBase
 {
 public:
@@ -46,7 +46,7 @@ public:
     virtual void run()
     {
         PARTITIONER partitioner;
-        AllocateFIFO allocator;
+        ALLOCATOR allocator;
         SCHEDULER scheduler;
 
 #if USE_UT
@@ -93,11 +93,21 @@ protected:
 
 };
 
-using RuntimeFIFO = RuntimeFIFOTemp< PartitionBasic, ScheduleBasic >;
-using RuntimeFIFOOneShot = RuntimeFIFOTemp< PartitionBasic, ScheduleOneShot >;
-using RuntimeFIFOCV = RuntimeFIFOTemp< PartitionBasic, ScheduleCV >;
-using RuntimeFIFOGroup = RuntimeFIFOTemp< PartitionPriority, ScheduleBasic >;
-using RuntimeFIFOGroupCV = RuntimeFIFOTemp< PartitionPriority, ScheduleCV >;
+using RuntimeFIFO = RuntimeFIFOTemp< PartitionBasic,
+                                     AllocateFIFO,
+                                     ScheduleBasic >;
+using RuntimeFIFOGroup = RuntimeFIFOTemp< PartitionPriority,
+                                          AllocateFIFO,
+                                          ScheduleBasic >;
+using RuntimeFIFOCV = RuntimeFIFOTemp< PartitionBasic,
+                                       AllocateFIFOCV,
+                                       ScheduleCV >;
+using RuntimeFIFOGroupCV = RuntimeFIFOTemp< PartitionPriority,
+                                            AllocateFIFOCV,
+                                            ScheduleCV >;
+using RuntimeFIFOOneShot = RuntimeFIFOTemp< PartitionBasic,
+                                            AllocateFIFO,
+                                            ScheduleOneShot >;
 
 } /** end namespace raft **/
 

@@ -20,28 +20,36 @@
  */
 #ifndef RAFT_SCHEDULE_SCHEDULE_HPP
 #define RAFT_SCHEDULE_SCHEDULE_HPP  1
+#include <mutex>
+#include <atomic>
+
+#if QTHREAD_FOUND
+#include <qthread/qthread.hpp>
+#endif
+#if UT_FOUND
+#include <ut>
+#endif
+
 #include "raftinc/signalhandler.hpp"
 #include "raftinc/rafttypes.hpp"
 #include "raftinc/defs.hpp"
 #include "raftinc/singleton.hpp"
-#include <mutex>
 
 namespace raft {
 
 class Kernel;
 class Task;
 
-struct TaskSchedMeta
+struct TaskListNode
 {
-    TaskSchedMeta( Task *the_task = nullptr ) : task( the_task ) {}
-    virtual ~TaskSchedMeta() = default;
-    /* wakeup - the interface for Allocate to wakeup condition-waiting task */
-    virtual void wakeup() {}
-    /* done - the interface for UT variants to post waitgroup_done */
-    virtual void done() {}
+    TaskListNode( Task *the_task = nullptr ) : task( the_task )
+    {
+        finished = false;
+    }
+    virtual ~TaskListNode() = default;
     Task * const task;
-    bool finished = false;
-    TaskSchedMeta * volatile next = nullptr;
+    TaskListNode * volatile next = nullptr;
+    bool finished;
 };
 
 class Schedule
@@ -52,10 +60,26 @@ public:
     {
         /* set myself as the singleton scheduler */
         Singleton::schedule( this );
-        tasks = new TaskSchedMeta(); /* dummy head */
+        tasks = new TaskListNode(); /* dummy head */
+#if USE_UT
+        waitgroup_init( &wg );
+#elif USE_QTHREAD
+        const auto ret_val( qthread_initialize() );
+        if( 0 != ret_val )
+        {
+            std::cerr << "failure to initialize qthreads runtime, exiting\n";
+            exit( EXIT_FAILURE );
+        }
+#endif
     }
 
-    virtual ~Schedule() = default;
+    virtual ~Schedule()
+    {
+#if USE_QTHREAD
+        /** kill off the qthread structures **/
+        qthread_finalize();
+#endif
+    }
 
     virtual void schedule()
     {
@@ -92,9 +116,54 @@ public:
 
 protected:
 
+    void wait_tasks_finish()
+    {
+#if USE_UT
+        waitgroup_wait( &wg );
+#else
+        bool keep_going( true );
+        while( keep_going )
+        {
+            while( ! tasks_mutex.try_lock() )
+            {
+                raft::yield();
+            }
+            //exit, we have a lock
+            keep_going = false;
+            TaskListNode *tparent( tasks );
+            //loop over each thread and check if done
+            while( nullptr != tparent->next )
+            {
+                if( tparent->next->finished )
+                {
+                    TaskListNode *ttmp = tparent->next;
+                    tparent->next = ttmp->next;
+                    delete ttmp;
+                }
+                else /* a task ! finished */
+                {
+                    tparent = tparent->next;
+                    keep_going = true;
+                }
+            }
+            //if we're here we have a lock and need to unlock
+            tasks_mutex.unlock();
+            /**
+             * NOTE: added to keep from having to unlock these so frequently
+             * might need to make the interval adjustable dep. on app
+             */
+            std::chrono::milliseconds dura( 3 );
+            std::this_thread::sleep_for( dura );
+        }
+#endif
+    }
+
     std::mutex tasks_mutex;
-    TaskSchedMeta *tasks; /* the head of tasks linked list */
-    volatile std::size_t task_id = 1;
+    TaskListNode *tasks; /* the head of tasks linked list */
+    std::atomic< std::size_t > task_id = { 1 };
+#if UT_FOUND
+    waitgroup_t wg;
+#endif
 
 }; /** end Schedule decl **/
 

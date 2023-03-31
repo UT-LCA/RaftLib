@@ -42,37 +42,32 @@
 
 namespace raft {
 
-struct StdThreadSchedMeta : public TaskSchedMeta
+struct StdThreadListNode : public TaskListNode
 {
-    StdThreadSchedMeta( Task *the_task ) :
-        TaskSchedMeta( the_task ),
-        th( [ & ](){ (this)->task->sched_meta = this;
+    StdThreadListNode( Task *the_task ) :
+        TaskListNode( the_task ),
+        th( [ & ](){ (this)->task->finished = &finished;
                      (this)->task->exe(); } )
     {
-        run_count = 0;
     }
 
-    virtual ~StdThreadSchedMeta()
+    virtual ~StdThreadListNode()
     {
         th.join();
-        auto *worker( static_cast< PollingWorker* >( task ) );
-        delete worker;
+        delete task;
     }
 
     std::thread th;
-    /* map every task to a kthread */
-    int8_t run_count;
 };
 
 #if QTHREAD_FOUND
-struct QThreadSchedMeta : public TaskSchedMeta
+struct QThreadListNode : public TaskListNode
 {
-    QThreadSchedMeta( Task *the_task ) : TaskSchedMeta( the_task )
+    QThreadListNode( Task *the_task ) : TaskListNode( the_task )
     {
-        run_count = 0;
-        task->sched_meta = this;
-        qthread_spawn( QThreadSchedMeta::run,
-                       ( void* ) this,
+        (this)->task->finished = &finished;
+        qthread_spawn( QThreadListNode::run,
+                       ( void* ) task,
                        0,
                        0,
                        0,
@@ -81,56 +76,24 @@ struct QThreadSchedMeta : public TaskSchedMeta
                        0 );
     }
 
-    virtual ~QThreadSchedMeta()
+    virtual ~QThreadListNode()
     {
-        auto *worker( static_cast< PollingWorker* >( task ) );
-        delete worker;
+        delete task;
     }
 
     static aligned_t run( void *data )
     {
-        auto * const tmeta( reinterpret_cast< QThreadSchedMeta* >( data ) );
-        tmeta->task->exe();
+        auto * const worker( reinterpret_cast< Task* >( data ) );
+        worker->exe();
         return 0;
     }
-
-    int8_t run_count;
 };
 #endif
 
-#if UT_FOUND
-struct UTSchedMeta : public TaskSchedMeta
-{
-    UTSchedMeta( Task *the_task, waitgroup_t *the_wg ) :
-        TaskSchedMeta( the_task ), wg( the_wg )
-    {
-        run_count = 0;
-        task->sched_meta = this;
-        rt::Spawn( [ & ](){ task->exe(); } );
-    }
-
-    virtual ~UTSchedMeta()
-    {
-        auto *worker( static_cast< PollingWorker* >( task ) );
-        delete worker;
-    }
-
-    virtual void done()
-    {
-        waitgroup_done( wg );
-    }
-
-    int8_t run_count;
-    waitgroup_t *wg;
-};
-#endif
-
-#if USE_UT
-using PollingWorkerSchedMeta = struct UTSchedMeta;
-#elif USE_QTHREAD
-using PollingWorkerSchedMeta = struct QThreadSchedMeta;
+#if USE_QTHREAD
+using PollingWorkerListNode = struct QThreadListNode;
 #else
-using PollingWorkerSchedMeta = struct StdThreadSchedMeta;
+using PollingWorkerListNode = struct StdThreadListNode;
 #endif
 
 
@@ -139,24 +102,9 @@ class ScheduleBasic : public Schedule
 public:
     ScheduleBasic() : Schedule()
     {
-#if USE_UT
-        waitgroup_init( &wg );
-#elif USE_QTHREAD
-        const auto ret_val( qthread_initialize() );
-        if( 0 != ret_val )
-        {
-            std::cerr << "failure to initialize qthreads runtime, exiting\n";
-            exit( EXIT_FAILURE );
-        }
-#endif
     }
-    virtual ~ScheduleBasic()
-    {
-#if USE_QTHREAD
-        /** kill off the qthread structures **/
-        qthread_finalize();
-#endif
-    }
+
+    virtual ~ScheduleBasic() = default;
 
     /**
      * schedule - called to start execution of all
@@ -185,44 +133,8 @@ public:
 
         (this)->start_tasks();
 
-#if USE_UT
-        waitgroup_wait( &wg );
-#else
-        bool keep_going( true );
-        while( keep_going )
-        {
-            while( ! tasks_mutex.try_lock() )
-            {
-                raft::yield();
-            }
-            //exit, we have a lock
-            keep_going = false;
-            TaskSchedMeta *tparent( tasks );
-            //loop over each thread and check if done
-            while( nullptr != tparent->next )
-            {
-                if( tparent->next->finished )
-                {
-                    TaskSchedMeta *ttmp = tparent->next;
-                    tparent->next = ttmp->next;
-                    delete ttmp;
-                }
-                else /* a task ! finished */
-                {
-                    tparent = tparent->next;
-                    keep_going = true;
-                }
-            }
-            //if we're here we have a lock and need to unlock
-            tasks_mutex.unlock();
-            /**
-             * NOTE: added to keep from having to unlock these so frequently
-             * might need to make the interval adjustable dep. on app
-             */
-            std::chrono::milliseconds dura( 3 );
-            std::this_thread::sleep_for( dura );
-        }
-#endif
+        wait_tasks_finish();
+
         return;
     }
 
@@ -234,7 +146,7 @@ public:
         {
             return true;
         }
-        return task->sched_meta->finished;
+        return task->stopped;
     }
 
 
@@ -256,16 +168,16 @@ public:
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            task->sched_meta->finished = true;
+            task->stopped = true;
         }
     }
 
     virtual void reschedule( Task* task )
     {
-        auto *t( static_cast< PollingWorkerSchedMeta* >( task->sched_meta ) );
-        if( 64 <= ++t->run_count )
+        auto *worker( static_cast< PollingWorker* >( task ) );
+        if( 64 <= ++worker->poll_count )
         {
-            t->run_count = 0;
+            worker->poll_count = 0;
             raft::yield();
         }
     }
@@ -278,9 +190,10 @@ public:
     {
         Singleton::allocate()->invalidateOutputs( task );
 #if USE_UT
-        task->sched_meta->done();
+        waitgroup_done( task->wg );
+        delete task; /* main thread is only monitoring wg, so self-free */
 #else
-        task->sched_meta->finished = true;
+        *task->finished = true; /* let main thread know this task is done */
 #endif
     }
 
@@ -316,13 +229,8 @@ protected:
         const int nclones =
             ( kernel->getCloneFactor() > 1 ) ? kernel->getCloneFactor() : 1;
 
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        std::size_t worker_id = task_id;
-        task_id += nclones; /* reserve that many task ids */
-        tasks_mutex.unlock();
+        std::size_t worker_id = task_id.fetch_add(
+                nclones, std::memory_order_relaxed );
         for( int i( 0 ); nclones > i; ++i )
         {
             /**
@@ -331,47 +239,92 @@ protected:
              * kernel is done, it can be rescheduled...and this
              * handles that.
              */
-            PollingWorker *task = new PollingWorker();
+            PollingWorker *task ( new_a_worker() );
             task->kernel = kernel;
-            task->type = POLLING_WORKER;
             task->id = worker_id + i;
             task->clone_id = i;
 
             //assert( Singleton::allocate()->isReady() );
             Singleton::allocate()->taskInit( task );
 
-            (this)->make_new_sched_meta( task );
+            run_worker( task );
         }
 
         return;
     }
 
-    virtual void make_new_sched_meta( Task *task )
+    /**
+     * new_a_worker - simply get the pointer to a new PollingWorker instance
+     * made this a virtual methid in protected section in order to allow
+     * ScheduleCV to substitue it with a PollingWorkerCV instance
+     * @return PollingWorker*
+     */
+    virtual PollingWorker *new_a_worker()
     {
-#if USE_UT
-        auto *tmeta( new PollingWorkerSchedMeta( task, &wg ) );
-        UNUSED( tmeta );
-#else
-        auto *tmeta( new PollingWorkerSchedMeta( task ) );
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tmeta->next = tasks->next;
-        tasks->next = tmeta;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
+        return new PollingWorker();
     }
 
     /** kernel set **/
     kernelset_t kernels;
     kernelset_t source_kernels;
     kernelset_t sink_kernels;
+
+private:
+
+    inline void run_worker( Task *task )
+    {
 #if USE_UT
-    waitgroup_t wg;
+        task->wg = &wg;
+        rt::Spawn( [ task ](){ task->exe(); } );
+#else
+        auto *tnode( new PollingWorkerListNode( task ) );
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        /* insert into tasks linked list */
+        tnode->next = tasks->next;
+        tasks->next = tnode;
+        /** we got here, unlock **/
+        tasks_mutex.unlock();
 #endif
+    }
+
+};
+
+/**
+ * ScheduleCV - a special scheduler that is almost identical to the basic
+ * polling worker style scheduler (i.e., ScheduleBasic) in most part, except
+ * this one exploit the producer-consumer relationship in DAG topology to
+ * accurately schedule the tasks getting data ready to make progress.
+ * Note: should be used together with AllocateCV.
+ */
+class ScheduleCV : public ScheduleBasic
+{
+public:
+    ScheduleCV() : ScheduleBasic()
+    {
+    }
+    virtual ~ScheduleCV() = default;
+
+    virtual void prepare( Task *task )
+    {
+        Singleton::allocate()->registerConsumer( task );
+    }
+
+    virtual void reschedule( Task *task )
+    {
+        auto *worker( static_cast< PollingWorkerCV* >( task ) );
+        worker->wait();
+    }
+
+protected:
+
+    virtual PollingWorker *new_a_worker()
+    {
+        return new PollingWorkerCV();
+    }
+
 };
 
 } /** end namespace raft **/

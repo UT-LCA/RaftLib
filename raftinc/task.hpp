@@ -21,6 +21,10 @@
 #define RAFT_TASK_HPP  1
 #include <vector>
 
+#if UT_FOUND
+#include <ut>
+#endif
+
 #include "raftinc/exceptions.hpp"
 #include "raftinc/defs.hpp"
 #include "raftinc/rafttypes.hpp"
@@ -46,10 +50,18 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
     Kernel *kernel;
     TaskType type;
     std::size_t id;
-    TaskSchedMeta *sched_meta;
-    /* for scheduler to store per-task meta data, thread-safe access */
+    bool stopped;
+    volatile bool *finished; /* this is to signal the monitoring main thread */
+#if UT_FOUND
+    waitgroup_t *wg;
+#endif
     TaskAllocMeta *alloc_meta;
     /* for allocator to store per-task meta data, thread-safe access */
+
+    Task()
+    {
+        stopped = false;
+    }
 
     virtual ~Task() = default;
 

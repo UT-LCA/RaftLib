@@ -26,6 +26,5 @@
 #include "raftinc/schedule/schedule.hpp"
 #include "raftinc/schedule/schedule_basic.hpp"
 #include "raftinc/schedule/schedule_oneshot.hpp"
-#include "raftinc/schedule/schedule_cv.hpp"
 
 #endif /* END RAFT_SCHEDULE_SCHEDULERS_HPP */

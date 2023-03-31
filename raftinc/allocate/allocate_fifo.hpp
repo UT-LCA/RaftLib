@@ -72,13 +72,14 @@ struct TaskFIFOPort
     FIFOFunctor *functor;
     const int nfifos;
     int idx;
-    TaskSchedMeta **tasks;
+    PollingWorkerCV **consumers;
     bool readonly = false;
     /* when in Kernel::AllocMeta, there are multi-readers but avoid writing */
     TaskFIFOPort( int n ) : nfifos( n )
     {
         fifos = new FIFO*[ n ];
-        tasks = new TaskSchedMeta*[ n ](); // serve as the cache of fifo_tmeta
+        consumers = new PollingWorkerCV*[ n ]();
+        // serve as the cache of fifo_consumers
     }
     /* define the following constructor to allow unordered_map index access */
     TaskFIFOPort() : nfifos( 0 )
@@ -98,9 +99,9 @@ struct TaskFIFOPort
         {
             delete[] fifos;
         }
-        if( nullptr != tasks )
+        if( nullptr != consumers )
         {
-            delete[] tasks;
+            delete[] consumers;
         }
     }
     virtual bool wakupConsumer()
@@ -110,13 +111,13 @@ struct TaskFIFOPort
             return true;
         }
         // wake up the worker waiting for data
-        if( nullptr != tasks[ idx ] )
+        if( nullptr != consumers[ idx ] )
         {
-            tasks[ idx ]->wakeup();
+            consumers[ idx ]->wakeup();
             return true;
         }
         return false;
-        /* let AllocateFIFO knows that it should looking up fifo_tmeta */
+        /* let AllocateFIFOCV knows that it should looking up fifo_consumers */
     }
     virtual void nextFIFO()
     {
@@ -151,10 +152,7 @@ class AllocateFIFO : public Allocate
 public:
 
     /**
-     * AllocateFIFO - base constructor, really doesn't do too much
-     * save for setting the global variables all_kernels and
-     * source_kernels from the DAG object.
-     * @param dag - raft::DAG&
+     * AllocateFIFO - base constructor
      */
     AllocateFIFO() : Allocate() {}
 
@@ -220,8 +218,6 @@ public:
                                 INITIAL_ALLOC_SIZE,
                                 ALLOC_ALIGN_WIDTH,
                                 nullptr );
-                    /* allocate the slot earlier to avoid fifo_tmeta resize */
-                    fifo_tmeta[ fifos->at( i ) ] = nullptr;
                 }
             }
             /* allocate one more fifo as the mutex-protected fifo */
@@ -230,8 +226,6 @@ public:
                         a )->make_new_fifo_mutexed( INITIAL_ALLOC_SIZE,
                                                     ALLOC_ALIGN_WIDTH,
                                                     nullptr );
-            /* allocate the slot earlier to avoid fifo_tmeta resize */
-            fifo_tmeta[ fifos->back() ] = nullptr;
             a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
         };
 
@@ -255,6 +249,10 @@ public:
                 port.functor = p.second.runtime_info.fifo_functor;
             }
         }
+
+        /* preset consumers for each fifo to be nullptr, this is really just the
+         * hook to let AllocateFIFOCV plug into the initial allocation phase */
+        (this)->preset_fifo_consumers();
 
         (this)->ready = true;
         return dag;
@@ -330,9 +328,7 @@ public:
 
     virtual void registerConsumer( Task *task )
     {
-        assert( POLLING_WORKER == task->type );
-        auto *t( static_cast< PollingWorker* >( task ) );
-        polling_worker_register_consumer( t );
+        UNUSED( task );
     }
 
     virtual void commit( Task *task )
@@ -421,10 +417,7 @@ public:
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->push( port->fifos[ port->idx ], item );
         // wake up the worker waiting for data
-        if( ! port->wakupConsumer() )
-        {
-            port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
-        }
+        (this)->port_wakeup_consumer( port );
         port->nextFIFO();
     }
 
@@ -443,10 +436,7 @@ public:
                     &tmeta->ports_out[ 0 ] : tmeta->selected_out );
         port->functor->send( port->fifos[ port->idx ] );
         // wake up the worker waiting for data
-        if( ! port->wakupConsumer() )
-        {
-            port->tasks[ port->idx ] = fifo_tmeta[ port->fifos[ port->idx ] ];
-        }
+        (this)->port_wakeup_consumer( port );
         port->nextFIFO();
     }
 
@@ -844,22 +834,6 @@ protected:
         }
     }
 
-    inline void polling_worker_register_consumer( PollingWorker *worker )
-    {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
-
-        auto &input_ports( tmeta->ports_in );
-        for( auto &port : input_ports )
-        {
-            auto *fifos( port.fifos );
-            auto nfifos( port.nfifos );
-            for( int i = 0; nfifos > i; ++i )
-            {
-                fifo_tmeta[ fifos[ i ] ] = worker->sched_meta;
-            }
-        }
-    }
-
     /**
      * kernel_commit - commit the data involved by the kernel compute().
      * @param kernel - raft::Kernel*
@@ -905,7 +879,7 @@ protected:
      * of a polling worker.
      * @param task - raft::PollingWorker*
      */
-    static void polling_worker_invalidate_outputs( PollingWorker *worker )
+    void polling_worker_invalidate_outputs( PollingWorker *worker )
     {
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
         for( auto &port : tmeta->ports_out )
@@ -914,10 +888,8 @@ protected:
             {
                 port.fifos[ i ]->invalidate();
                 // wake up workers waiting on termination
-                if( nullptr != port.tasks[ i ] )
-                {
-                    port.tasks[ i ]->wakeup();
-                }
+                port.idx = i; /* unlike push/send, where idx is already set */
+                (this)->port_wakeup_consumer( &port );
             }
         }
     }
@@ -951,11 +923,28 @@ protected:
     }
 
     /**
+     * preset_fifo_consumers - this is the hook function to allow
+     * AllocateFIFOCV to override and prepare its structure during the initial
+     * allocation phase
+     */
+    virtual void preset_fifo_consumers()
+    {
+        /* do nothing */
+    }
+
+    /**
+     * port_wakeup_consumer - this is the hook function to allow
+     * AllocateFIFOCV to override and wakeup the consumer based on its record
+     */
+    virtual void port_wakeup_consumer( TaskFIFOPort *port )
+    {
+        /* do nothing */
+    }
+
+    /**
      * keeps a list of all currently allocated FIFO objects
      */
     std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
-
-    std::unordered_map< FIFO*, TaskSchedMeta* > fifo_tmeta;
 
 #if UT_FOUND
     struct slab streaming_data_slab;
@@ -966,6 +955,72 @@ protected:
     volatile bool ready = false;
 
 }; /** end AllocateFIFO decl **/
+
+/**
+ * AllocateFIFOCV - a special allocate that is almost identical to the basic
+ * FIFO allocator (i.e., AllocateFIFO) in most part, except this one implements
+ * the interface to register and wakeup FIFO consumers.
+ * Note: If not used with ScheduleCV, it should does everything the same as
+ * AllocateFIFO.
+ */
+class AllocateFIFOCV : public AllocateFIFO
+{
+public:
+
+    AllocateFIFOCV() : AllocateFIFO() {}
+
+    virtual ~AllocateFIFOCV() = default;
+
+    virtual void registerConsumer( Task *task )
+    {
+        assert( POLLING_WORKER == task->type );
+        auto *t( static_cast< PollingWorkerCV* >( task ) );
+        polling_worker_register_consumer( t );
+    }
+
+protected:
+
+    virtual void preset_fifo_consumers()
+    {
+        for( auto &p : port_fifo )
+        {
+            for( auto *fifo : *p.second )
+            {
+                /* allocate the slot earlier to avoid resize */
+                fifo_consumers[ fifo ] = nullptr;
+            }
+        }
+    }
+
+    virtual void port_wakeup_consumer( TaskFIFOPort *port )
+    {
+        if( ! port->wakupConsumer() )
+        {
+            port->consumers[ port->idx ] =
+                fifo_consumers[ port->fifos[ port->idx ] ];
+        }
+    }
+
+private:
+    inline void polling_worker_register_consumer( PollingWorkerCV *worker )
+    {
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+
+        auto &input_ports( tmeta->ports_in );
+        for( auto &port : input_ports )
+        {
+            auto *fifos( port.fifos );
+            auto nfifos( port.nfifos );
+            for( int i = 0; nfifos > i; ++i )
+            {
+                fifo_consumers[ fifos[ i ] ] = worker;
+            }
+        }
+    }
+
+    std::unordered_map< FIFO*, PollingWorkerCV* > fifo_consumers;
+
+}; /** end AllocateFIFOCV decl **/
 
 } /** end namespace raft **/
 

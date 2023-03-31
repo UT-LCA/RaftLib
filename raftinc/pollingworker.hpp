@@ -19,9 +19,14 @@
  */
 #ifndef RAFT_POLLINGWORKER_HPP
 #define RAFT_POLLINGWORKER_HPP  1
-
+#include <mutex>
+#include <condition_variable>
 #include <vector>
 #include <unordered_map>
+
+#if UT_FOUND
+#include <ut>
+#endif
 
 #include "raftinc/exceptions.hpp"
 #include "raftinc/defs.hpp"
@@ -39,6 +44,15 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 {
     /* the index when there are multiple polling worker clones for a kernel */
     int clone_id;
+    int8_t poll_count;
+
+    PollingWorker() : TaskImpl()
+    {
+        type = POLLING_WORKER;
+        poll_count = 0;
+    }
+
+    virtual ~PollingWorker() = default;
 
     kstatus::value_t exe()
     {
@@ -63,6 +77,51 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         Singleton::schedule()->postexit( this );
 
         return kstatus::stop;
+    }
+};
+
+struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorkerCV : public PollingWorker
+{
+#if USE_UT
+    rt::Mutex m;
+    rt::CondVar cv;
+#else
+    std::mutex m;
+    std::condition_variable cv;
+#endif
+
+    PollingWorkerCV() : PollingWorker()
+    {
+    }
+
+    virtual ~PollingWorkerCV() = default;
+
+    void wait()
+    {
+#if USE_UT
+        m.Lock();
+        while( ! Singleton::schedule()->readyRun( this ) &&
+               ! Singleton::schedule()->shouldExit( this ) )
+        {
+            cv.Wait( &m );
+        }
+        m.Unlock();
+#else
+        std::unique_lock lk( m );
+        cv.wait( lk, [ & ]() {
+                return Singleton::schedule()->readyRun( this ) ||
+                       Singleton::schedule()->shouldExit( this ); } );
+        lk.unlock();
+#endif
+    }
+
+    void wakeup()
+    {
+#if USE_UT
+        cv.Signal();
+#else
+        cv.notify_one();
+#endif
     }
 };
 

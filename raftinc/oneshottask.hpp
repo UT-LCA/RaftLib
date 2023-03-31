@@ -35,6 +35,17 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 {
     StreamingData *stream_in;
     StreamingData *stream_out;
+    bool is_source;
+#if USE_QTHREAD
+    int group_id;
+#endif
+
+    OneShotTask() : TaskImpl()
+    {
+        type = ONE_SHOT;
+    }
+
+    virtual ~OneShotTask() = default;
 
     kstatus::value_t exe()
     {

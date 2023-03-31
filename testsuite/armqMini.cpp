@@ -107,6 +107,18 @@ main()
 
     s.reset();
     l.reset();
+    dag.exe< raft::RuntimeFIFOGroup >();
+
+    s.reset();
+    l.reset();
+    dag.exe< raft::RuntimeFIFOCV >();
+
+    s.reset();
+    l.reset();
+    dag.exe< raft::RuntimeFIFOGroupCV >();
+
+    s.reset();
+    l.reset();
     dag.exe< raft::RuntimeFIFOOneShot >();
     return( EXIT_SUCCESS );
 }

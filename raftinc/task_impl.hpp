@@ -31,6 +31,7 @@ namespace raft
 
 struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
 {
+    TaskImpl() : Task() {}
 
     virtual ~TaskImpl() = default;
 
