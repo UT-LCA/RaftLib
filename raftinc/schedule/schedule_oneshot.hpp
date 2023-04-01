@@ -117,8 +117,6 @@ public:
         self_iterate( task ); /* for source kernels to start a new iteration */
 #if USE_UT
         waitgroup_done( task->wg );
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
-        tcache_free( &__perthread_oneshot_task_pt, oneshot );
 #else
         *task->finished = true;
         /* mark finished here because oneshot task does not postexit() */
@@ -273,7 +271,9 @@ private:
 #if USE_UT
         waitgroup_add( &wg, 1 );
         oneshot->wg = &wg;
-        rt::Spawn( [ oneshot ]() { oneshot->exe(); } );
+        rt::Spawn( [ oneshot ]() {
+                oneshot->exe();
+                tcache_free( &__perthread_oneshot_task_pt, oneshot ); } );
 #else
 #if USE_QTHREAD
         oneshot->group_id = gid;

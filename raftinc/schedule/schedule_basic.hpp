@@ -191,7 +191,6 @@ public:
         Singleton::allocate()->invalidateOutputs( task );
 #if USE_UT
         waitgroup_done( task->wg );
-        delete task; /* main thread is only monitoring wg, so self-free */
 #else
         *task->finished = true; /* let main thread know this task is done */
 #endif
@@ -275,7 +274,7 @@ private:
     {
 #if USE_UT
         task->wg = &wg;
-        rt::Spawn( [ task ](){ task->exe(); } );
+        rt::Spawn( [ task ](){ task->exe(); delete task; } );
 #else
         auto *tnode( new PollingWorkerListNode( task ) );
         while( ! tasks_mutex.try_lock() )
