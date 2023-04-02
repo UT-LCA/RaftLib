@@ -65,17 +65,19 @@ public:
 
     enum Type : std::uint8_t
     {
-        IN         = 0x0,
-        OUT        = 0x1,
-        /* SINGLE: single port could avoid indexing with
+        IN                = 0x0,
+        OUT               = 0x1,
+        /* SINGLE_x: single port could avoid indexing with
          * port name and looking up the container */
-        SINGLE_IN  = 0x2,
-        SINGLE_OUT = 0x3,
-        /* 1PIECE: prefetched from message queue, or stay
+        SINGLE_IN         = 0x2,
+        SINGLE_OUT        = 0x3,
+        /* x_1PIECE: prefetched from message queue, or stay
          * as 1 piece output for oneshot tasks, rather
          * than entering a message queue */
-        IN_1PIECE  = 0x6,
-        OUT_1PIECE = 0x7
+        IN_1PIECE         = 0x4,
+        OUT_1PIECE        = 0x5,
+        SINGLE_IN_1PIECE  = 0x6,
+        SINGLE_OUT_1PIECE = 0x7
     };
 
     bool isInput() const
@@ -354,8 +356,8 @@ public:
      * to a consumer one shot task to use */
     StreamingData *out2in1piece()
     {
-        assert( is1Piece() );
-        type = IN_1PIECE;
+        assert( isSingle() && is1Piece() );
+        type = SINGLE_IN_1PIECE;
         single_store_valid = true;
         ref_ptr = &single_store;
         return this;

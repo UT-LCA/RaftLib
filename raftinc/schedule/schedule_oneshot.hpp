@@ -102,7 +102,6 @@ public:
 
     virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
-        Singleton::allocate()->commit( task );
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
@@ -115,6 +114,7 @@ public:
     {
         feed_consumers( task );
         self_iterate( task ); /* for source kernels to start a new iteration */
+        Singleton::allocate()->taskCommit( task );
 #if USE_UT
         waitgroup_done( task->wg );
 #else
@@ -156,56 +156,46 @@ protected:
 
     void feed_consumers( Task *task )
     {
-        auto *t( static_cast< OneShotTask* >( task ) );
-        Kernel *mykernel( task->kernel );
-        if( 0 == mykernel->output.size() )
+        if( 0 == task->kernel->output.size() )
         {
             return;
         }
+        auto *oneshot( static_cast< OneShotTask* >( task ) );
         int64_t gid = -1;
 #if USE_QTHREAD
-        gid = t->group_id;
+        gid = oneshot->group_id;
 #endif
-        if( 1 == mykernel->output.size() )
+        PortInfo *my_pi;
+        DataRef ref;
+        while( Singleton::allocate()->schedPop( task, my_pi, ref ) )
         {
-            if( t->stream_out->isSent() )
+            auto *other_pi( my_pi->other_port );
+            //TODO: deal with a kernel depends on multiple producers
+            shot_kernel( other_pi->my_kernel, other_pi->my_name, ref, gid );
+        }
+        auto *stream_out( oneshot->stream_out );
+        if( stream_out->is1Piece() )
+        {
+            if( stream_out->isSingle() )
             {
-                const auto *other_pi(
-                        mykernel->output.begin()->second.other_port );
-                shot_kernel( other_pi->my_kernel, t->stream_out, gid );
-                DataRef ref;
-                while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
+                if( stream_out->isSent() )
                 {
-                    shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
+                    my_pi = &oneshot->kernel->output.begin()->second;
+                    const auto *other_pi( my_pi->other_port );
+                    shot_kernel( other_pi->my_kernel, oneshot->stream_out,
                                  gid );
                 }
             }
-        }
-        else
-        {
-            for( auto &p : t->stream_out->getUsed() )
+            else
             {
-                const auto *other_pi( mykernel->output[ p.first ].other_port );
-                //TODO: deal with a kernel depends on multiple producers
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, p.second,
-                             gid );
-                DataRef ref;
-                while( ( ref = Singleton::allocate()->portPop( other_pi ) ) )
+                for( auto &p : oneshot->stream_out->getUsed() )
                 {
-                    shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                                 gid );
+                    const auto *other_pi(
+                            oneshot->kernel->output[ p.first ].other_port );
+                    shot_kernel( other_pi->my_kernel, other_pi->my_name,
+                                 p.second, gid );
                 }
             }
-        }
-        //TODO: have one uniform Allocator interface to drain the output
-        std::pair< PortInfo*, DataRef > pair_tmp =
-            Singleton::allocate()->getOutBuf( task );
-        while( nullptr != pair_tmp.first )
-        {
-            const auto *other_pi( pair_tmp.first->other_port );
-            shot_kernel( other_pi->my_kernel, other_pi->my_name,
-                         pair_tmp.second, gid );
-            pair_tmp = Singleton::allocate()->getOutBuf( task );
         }
     }
 

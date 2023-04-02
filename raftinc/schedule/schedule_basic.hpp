@@ -164,7 +164,7 @@ public:
 
     virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
-        Singleton::allocate()->commit( task );
+        //Singleton::allocate()->taskCommit( task );
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit

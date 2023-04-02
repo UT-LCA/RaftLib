@@ -141,6 +141,9 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
 
     TaskFIFOPort *selected_in;
     TaskFIFOPort *selected_out;
+
+    Kernel::port_map_t::iterator drain_iter;
+    /* used by schedPop to memorize which in ports_out should be the next */
 };
 
 class AllocateFIFO : public Allocate
@@ -226,6 +229,7 @@ public:
                 port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
                 port.functor = p.second.runtime_info.fifo_functor;
             }
+            tmeta->drain_iter = k->output.begin();
         }
 
         /* preset consumers for each fifo to be nullptr, this is really just the
@@ -309,9 +313,16 @@ public:
         UNUSED( task );
     }
 
-    virtual void commit( Task *task )
+    virtual void taskCommit( Task *task )
     {
-        task_commit( task );
+        if( POLLING_WORKER == task->type )
+        {
+            return;
+        }
+        if( ONE_SHOT == task->type )
+        {
+            oneshot_commit( static_cast< OneShotTask* >( task ) );
+        }
     }
 
     virtual void invalidateOutputs( Task *task )
@@ -418,23 +429,28 @@ public:
         port->nextFIFO();
     }
 
-    virtual DataRef portPop( const PortInfo *pi )
+    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref )
     {
-        auto *functor( pi->runtime_info.fifo_functor );
-        FIFO *fifo = port_fifo[ pi ]->back();
-        //FIXME: could have race condition, that the data is popped by another thread
-        if( 0 == fifo->size() )
+        assert( ONE_SHOT == task->type );
+        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto iter( tmeta->drain_iter );
+        while ( iter != task->kernel->output.end() )
         {
-            return DataRef();
+            auto &pi( iter->second );
+            auto *functor( pi.runtime_info.fifo_functor );
+            auto *fifo( port_fifo[ &pi ]->back() );
+            if( 0 >= fifo->size() )
+            {
+                iter++;
+                continue;
+            }
+            ref = functor->oneshot_allocate();
+            functor->pop( fifo, ref );
+            pi_ptr = &pi;
+            tmeta->drain_iter = iter;
+            return true;
         }
-        DataRef ref( functor->oneshot_allocate() );
-        functor->pop( fifo, ref );
-        return ref;
-    }
-
-    virtual std::pair< PortInfo*, DataRef > getOutBuf( Task *task )
-    {
-        return std::make_pair< PortInfo*, DataRef >( nullptr, DataRef() );
+        return false;
     }
 
 protected:
@@ -770,27 +786,32 @@ protected:
     inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
     {
         oneshot->stream_in = nullptr;
+        auto sd_type( ( 1 < oneshot->kernel->output.size() ) ?
+                      StreamingData::OUT_1PIECE :
+                      StreamingData::SINGLE_OUT_1PIECE );
 #if USE_UT
         auto *stream_out_ptr_tmp(
                 tcache_alloc( &__perthread_streaming_data_pt ) );
-        oneshot->stream_out = new ( stream_out_ptr_tmp ) StreamingData(
-                oneshot, StreamingData::OUT_1PIECE );
-        //FIXME: here OUT_1PIECE assumes only one output port
+        oneshot->stream_out =
+            new ( stream_out_ptr_tmp ) StreamingData( oneshot, sd_type );
         if( alloc_input )
         {
+            auto sd_in_type( 1 < oneshot->kernel->input.size() ?
+                             StreamingData::IN_1PIECE :
+                             StreamingData::SINGLE_IN_1PIECE );
             auto *stream_in_ptr_tmp(
                     tcache_alloc( &__perthread_streaming_data_pt ) );
             oneshot->stream_in = new ( stream_in_ptr_tmp ) StreamingData(
-                    oneshot, StreamingData::IN_1PIECE );
+                    oneshot, sd_in_type );
         }
 #else
-        oneshot->stream_out = new StreamingData( oneshot,
-                                                 StreamingData::OUT_1PIECE );
-        //FIXME: here OUT_1PIECE assumes only one output port
+        oneshot->stream_out = new StreamingData( oneshot, sd_type );
         if( alloc_input )
         {
-            oneshot->stream_in = new StreamingData( oneshot,
-                                                    StreamingData::IN_1PIECE );
+            auto sd_in_type( 1 < oneshot->kernel->input.size() ?
+                             StreamingData::IN_1PIECE :
+                             StreamingData::SINGLE_IN_1PIECE );
+            oneshot->stream_in = new StreamingData( oneshot, sd_in_type );
         }
 #endif
         auto &output_ports( oneshot->kernel->output );
@@ -815,45 +836,15 @@ protected:
             delete oneshot->stream_in;
 #endif
         }
-    }
-
-    /**
-     * kernel_commit - commit the data involved by the kernel compute().
-     * @param kernel - raft::Kernel*
-     * @return StreamingData.
-     */
-    static void kernel_commit( Kernel *kernel )
-    {
-        auto &output_list( kernel->output );
-
-        for( auto &p : output_list )
+        /* stream_out might have been assigned to a consumer task as stream_in
+         * if is1Piece() && isSingle() && isSent() */
+        if( nullptr != oneshot->stream_out && !oneshot->stream_out->isInput() )
         {
-            get_FIFOFunctor( p.second )->send( get_FIFO( p.second ) );
-        }
-
-        auto &input_list( kernel->input );
-
-        for( auto &p : input_list )
-        {
-            get_FIFOFunctor( p.second )->recycle( get_FIFO( p.second ) );
-        }
-    }
-
-    /**
-     * task_commit - commit the data involved by the kernel compute().
-     * @param task - raft::Task*
-     * @param buf - raft::StreamingData*
-     * @return StreamingData.
-     */
-    static void task_commit( Task *task )
-    {
-        if( POLLING_WORKER == task->type )
-        {
-            return;
-        }
-        if( ONE_SHOT == task->type )
-        {
-            oneshot_commit( static_cast< OneShotTask* >( task ) );
+#if USE_UT
+            tcache_free( &__perthread_streaming_data_pt, oneshot->stream_out );
+#else
+            delete oneshot->stream_out;
+#endif
         }
     }
 
