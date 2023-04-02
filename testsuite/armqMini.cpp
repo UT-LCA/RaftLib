@@ -103,22 +103,32 @@ main()
 
     raft::DAG dag;
     dag += s >> l;
+    std::cout << "RuntimeFIFO\n";
     dag.exe< raft::RuntimeFIFO >();
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeFIFOGroup\n";
     dag.exe< raft::RuntimeFIFOGroup >();
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeFIFOCV\n";
     dag.exe< raft::RuntimeFIFOCV >();
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeFIFOGroupCV\n";
     dag.exe< raft::RuntimeFIFOGroupCV >();
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeFIFOOneShot\n";
     dag.exe< raft::RuntimeFIFOOneShot >();
+
+    s.reset();
+    l.reset();
+    std::cout << "RuntimeNewOneShot\n";
+    dag.exe< raft::RuntimeNewOneShot >();
     return( EXIT_SUCCESS );
 }

@@ -144,7 +144,6 @@ public:
         {
             single_store = ref;
             ref_ptr = &single_store;
-            single_store_valid = true;
         }
         else
         {
@@ -160,7 +159,6 @@ public:
         {
             single_store = ref;
             ref_ptr = &single_store;
-            single_store_valid = true;
         }
         else
         {
@@ -179,7 +177,6 @@ public:
     {
         if( isSingle() )
         {
-            ref_ptr = single_store_valid ? &single_store : nullptr;
             return *this;
         }
 #if STRING_NAMES
@@ -266,7 +263,7 @@ public:
         ref_ptr = nullptr;
         if( isSingle() )
         {
-            single_store_valid = false;
+            single_store_valid = true;
         }
         else
         {
@@ -290,7 +287,7 @@ public:
         ref_ptr = nullptr;
         if( isSingle() )
         {
-            single_store_valid = false;
+            single_store_valid = true;
         }
         else
         {
@@ -319,7 +316,7 @@ public:
         ref_ptr = nullptr;
         if( isSingle() )
         {
-            single_store_valid = false;
+            single_store_valid = true;
         }
         else
         {
@@ -367,14 +364,16 @@ public:
     bool isSent() const
     {
         assert( isSingle() && ! isInput() );
-        return ! single_store_valid;
+        return single_store_valid;
     }
 
 private:
     Task *task;
     Type type;
     DataRef single_store;
+    /* indicate whether push/send valid data in single_store */
     bool single_store_valid = false;
+    /* pointing to the DataRef should access for data/buffer */
     DataRef *ref_ptr = nullptr;
     store_map_t::iterator iter;
     store_map_t *store = nullptr;

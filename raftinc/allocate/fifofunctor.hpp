@@ -70,6 +70,8 @@ public:
 
     virtual DataRef oneshot_allocate() = 0;
 
+    virtual DataRef oneshot_allocate( DataRef &data_ref ) = 0;
+
     virtual void deallocate( FIFO *fifo )
     {
         fifo->deallocate();
@@ -313,6 +315,17 @@ public:
         DataRef ref;
         /* TODO: use constructor for class type */
         T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        ref.set< T >( *ptr );
+        return ref;
+    }
+
+    virtual DataRef oneshot_allocate( DataRef &data_ref )
+    {
+        DataRef ref;
+        /* TODO: use constructor for class type */
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        /* TODO: this assume assign operator is available for T */
+        *ptr = data_ref.get< T >();
         ref.set< T >( *ptr );
         return ref;
     }

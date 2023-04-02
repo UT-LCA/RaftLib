@@ -26,9 +26,16 @@
 #include "raftinc/exceptions.hpp"
 #include "raftinc/singleton.hpp"
 
+#if UT_FOUND
+#include <ut>
+#endif
 
 namespace raft
 {
+
+#if UT_FOUND
+inline __thread tcache_perthread __perthread_streaming_data_pt;
+#endif
 
 class Task;
 class DataRef;
@@ -66,14 +73,22 @@ public:
     }
 #endif
 
+    /**
+     * isReady - call after initializing the allocate thread, check if the
+     * initial allocation is complete.
+     */
     virtual bool isReady() const
     {
-        return true;
+        return ready;
     }
 
+    /**
+     * isExited - call after initializing the allocate thread, check if the
+     * allocate thread has exited.
+     */
     virtual bool isExited() const
     {
-        return true;
+        return exited;
     }
 
     virtual bool dataInReady( Task *task, const port_key_t &name ) = 0;
@@ -100,6 +115,17 @@ public:
     virtual void taskSend( Task *task ) = 0;
 
     virtual DataRef portPop( const PortInfo *pi ) = 0;
+    virtual std::pair< PortInfo*, DataRef > getOutBuf( Task *task ) = 0;
+
+protected:
+
+#if UT_FOUND
+    struct slab streaming_data_slab;
+    struct tcache *streaming_data_tcache;
+#endif
+
+    volatile bool ready = false;
+    volatile bool exited = false;
 
 }; /** end Allocate decl **/
 

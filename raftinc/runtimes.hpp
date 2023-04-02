@@ -34,11 +34,11 @@ namespace raft
 {
 
 template< class PARTITIONER, class ALLOCATOR, class SCHEDULER >
-class RuntimeFIFOTemp : public RuntimeBase
+class RuntimeTemp : public RuntimeBase
 {
 public:
 
-    RuntimeFIFOTemp( DAG &the_dag ) : RuntimeBase( the_dag ) {}
+    RuntimeTemp( DAG &the_dag ) : RuntimeBase( the_dag ) {}
 
     /**
      * run - function to be extended for the actual execution of the DAG.
@@ -93,21 +93,24 @@ protected:
 
 };
 
-using RuntimeFIFO = RuntimeFIFOTemp< PartitionBasic,
-                                     AllocateFIFO,
-                                     ScheduleBasic >;
-using RuntimeFIFOGroup = RuntimeFIFOTemp< PartitionPriority,
-                                          AllocateFIFO,
-                                          ScheduleBasic >;
-using RuntimeFIFOCV = RuntimeFIFOTemp< PartitionBasic,
+using RuntimeFIFO = RuntimeTemp< PartitionBasic,
+                                 AllocateFIFO,
+                                 ScheduleBasic >;
+using RuntimeFIFOGroup = RuntimeTemp< PartitionPriority,
+                                      AllocateFIFO,
+                                      ScheduleBasic >;
+using RuntimeFIFOCV = RuntimeTemp< PartitionBasic,
+                                   AllocateFIFOCV,
+                                   ScheduleCV >;
+using RuntimeFIFOGroupCV = RuntimeTemp< PartitionPriority,
                                        AllocateFIFOCV,
                                        ScheduleCV >;
-using RuntimeFIFOGroupCV = RuntimeFIFOTemp< PartitionPriority,
-                                            AllocateFIFOCV,
-                                            ScheduleCV >;
-using RuntimeFIFOOneShot = RuntimeFIFOTemp< PartitionBasic,
-                                            AllocateFIFO,
-                                            ScheduleOneShot >;
+using RuntimeFIFOOneShot = RuntimeTemp< PartitionBasic,
+                                        AllocateFIFO,
+                                        ScheduleOneShot >;
+using RuntimeNewOneShot = RuntimeTemp< PartitionBasic,
+                                       AllocateNew,
+                                       ScheduleOneShot >;
 
 } /** end namespace raft **/
 

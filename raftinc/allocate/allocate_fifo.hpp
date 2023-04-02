@@ -62,10 +62,6 @@
 namespace raft
 {
 
-#if UT_FOUND
-inline __thread tcache_perthread __perthread_streaming_data_pt;
-#endif
-
 struct TaskFIFOPort
 {
     FIFO **fifos;
@@ -171,24 +167,6 @@ public:
              * is indexed by both port_info */
             p.second->clear();
         }
-    }
-
-    /**
-     * isReady - call after initializing the allocate thread, check if the
-     * initial allocation is complete.
-     */
-    bool isReady() const
-    {
-        return ready;
-    }
-
-    /**
-     * isExited - call after initializing the allocate thread, check if the
-     * allocate thread has exited.
-     */
-    bool isExited() const
-    {
-        return exited;
     }
 
     virtual DAG &allocate( DAG &dag )
@@ -452,6 +430,11 @@ public:
         DataRef ref( functor->oneshot_allocate() );
         functor->pop( fifo, ref );
         return ref;
+    }
+
+    virtual std::pair< PortInfo*, DataRef > getOutBuf( Task *task )
+    {
+        return std::make_pair< PortInfo*, DataRef >( nullptr, DataRef() );
     }
 
 protected:
@@ -945,14 +928,6 @@ protected:
      * keeps a list of all currently allocated FIFO objects
      */
     std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
-
-#if UT_FOUND
-    struct slab streaming_data_slab;
-    struct tcache *streaming_data_tcache;
-#endif
-
-    volatile bool exited = false;
-    volatile bool ready = false;
 
 }; /** end AllocateFIFO decl **/
 

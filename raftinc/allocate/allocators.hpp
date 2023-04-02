@@ -25,5 +25,6 @@
  */
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/allocate/allocate_fifo.hpp"
+#include "raftinc/allocate/allocate_new.hpp"
 
 #endif /* END RAFT_ALLOCATE_ALLOCATORS_HPP */
