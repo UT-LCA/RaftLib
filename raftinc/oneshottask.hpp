@@ -47,7 +47,7 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 
     virtual ~OneShotTask() = default;
 
-    kstatus::value_t exe()
+    virtual kstatus::value_t exe()
     {
         Singleton::schedule()->precompute( this );
         const auto sig_status(
@@ -57,6 +57,34 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
         return kstatus::stop;
     }
 };
+
+struct ALIGN( L1D_CACHE_LINE_SIZE ) BurstTask : public OneShotTask
+{
+
+    BurstTask() : OneShotTask()
+    {
+        type = ONE_SHOT;
+    }
+
+    virtual ~BurstTask() = default;
+
+    virtual kstatus::value_t exe()
+    {
+        while( ! Singleton::schedule()->shouldExit( this ) )
+        {
+            Singleton::schedule()->precompute( this );
+            const auto sig_status(
+                    (this)->kernel->compute( *stream_in, *stream_out ) );
+            Singleton::schedule()->postcompute( this, sig_status );
+            Singleton::schedule()->reschedule( this ); /* kind reload */
+        }
+        Singleton::schedule()->postexit( this );
+        return kstatus::stop;
+    }
+};
+
+static_assert( sizeof( OneShotTask ) == sizeof( BurstTask ),
+               "BurstTask needs to have the same size as OneShotTask" );
 
 } /** end namespace raft */
 #endif /* END RAFT_ONESHOTTASK_HPP */

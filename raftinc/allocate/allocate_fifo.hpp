@@ -429,9 +429,11 @@ public:
         port->nextFIFO();
     }
 
-    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref )
+    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
+                           bool *is_last )
     {
         assert( ONE_SHOT == task->type );
+        UNUSED( is_last );
         auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
         auto iter( tmeta->drain_iter );
         while ( iter != task->kernel->output.end() )

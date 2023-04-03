@@ -118,10 +118,12 @@ public:
      * a task in order to feed consumer tasks
      * @param task - Task *
      * @param pi_ptr - PortInfo *&
-     * @param raf - DataRef &
+     * @param ref - DataRef &
+     * @param is_last - bool *
      * @return bool - true when valid output found and set
      */
-    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref ) = 0;
+    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
+                           bool *is_last = nullptr ) = 0;
 
 protected:
 

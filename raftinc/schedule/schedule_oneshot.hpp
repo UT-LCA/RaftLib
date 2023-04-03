@@ -112,8 +112,8 @@ public:
 
     virtual void reschedule( Task* task )
     {
-        feed_consumers( task );
         self_iterate( task ); /* for source kernels to start a new iteration */
+        feed_consumers( task );
         Singleton::allocate()->taskCommit( task );
 #if USE_UT
         waitgroup_done( task->wg );
@@ -130,13 +130,13 @@ protected:
         auto &container( source_kernels );
         for( auto * const k : container )
         {
-            start_source_kernel_task( k );
+            (this)->start_source_kernel_task( k );
         }
     }
 
-    void start_source_kernel_task( Kernel *kernel )
+    virtual void start_source_kernel_task( Kernel *kernel )
     {
-        auto *task( new_an_oneshot() );
+        auto *task( (this)->new_an_oneshot() );
         task->is_source = true;
         task->kernel = kernel;
 
@@ -154,11 +154,11 @@ protected:
         return;
     }
 
-    void feed_consumers( Task *task )
+    virtual bool feed_consumers( Task *task )
     {
         if( 0 == task->kernel->output.size() )
         {
-            return;
+            return false;
         }
         auto *oneshot( static_cast< OneShotTask* >( task ) );
         int64_t gid = -1;
@@ -197,9 +197,10 @@ protected:
                 }
             }
         }
+        return false;
     }
 
-    void self_iterate( Task *task )
+    virtual void self_iterate( Task *task )
     {
         auto *oneshot( static_cast< OneShotTask* >( task ) );
         if( ! oneshot->is_source )
@@ -209,11 +210,11 @@ protected:
         start_source_kernel_task( task->kernel );
     }
 
-    void shot_kernel( Kernel *kernel,
-                      StreamingData *src_sd,
-                      int64_t gid )
+    virtual void shot_kernel( Kernel *kernel,
+                              StreamingData *src_sd,
+                              int64_t gid )
     {
-        auto *tnext( new_an_oneshot() );
+        auto *tnext( (this)->new_an_oneshot() );
         tnext->is_source = false;
         tnext->kernel = kernel;
 
@@ -225,12 +226,12 @@ protected:
         run_oneshot( tnext, gid );
     }
 
-    void shot_kernel( Kernel *kernel,
-                      const port_key_t &dst_name,
-                      DataRef &ref,
-                      int64_t gid )
+    virtual void shot_kernel( Kernel *kernel,
+                              const port_key_t &dst_name,
+                              DataRef &ref,
+                              int64_t gid )
     {
-        auto *tnext( new_an_oneshot() );
+        auto *tnext( (this)->new_an_oneshot() );
         tnext->is_source = false;
         tnext->kernel = kernel;
 
@@ -253,9 +254,7 @@ protected:
     struct tcache *oneshot_task_tcache;
 #endif
 
-private:
-
-    inline OneShotTask *new_an_oneshot()
+    virtual OneShotTask *new_an_oneshot()
     {
 #if USE_UT
         auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
@@ -266,7 +265,7 @@ private:
         return oneshot;
     }
 
-    inline void run_oneshot( OneShotTask *oneshot, int64_t gid )
+    virtual void run_oneshot( OneShotTask *oneshot, int64_t gid )
     {
         UNUSED( gid );
 #if USE_UT

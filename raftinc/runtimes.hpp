@@ -111,6 +111,9 @@ using RuntimeFIFOOneShot = RuntimeTemp< PartitionBasic,
 using RuntimeNewOneShot = RuntimeTemp< PartitionBasic,
                                        AllocateNew,
                                        ScheduleOneShot >;
+using RuntimeNewBurst = RuntimeTemp< PartitionBasic,
+                                     AllocateNew,
+                                     ScheduleBurst >;
 
 } /** end namespace raft **/
 

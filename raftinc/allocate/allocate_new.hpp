@@ -258,7 +258,8 @@ public:
         UNUSED( task );
     }
 
-    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref )
+    virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
+                           bool *is_last )
     {
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
         if( nullptr == tmeta->outbufs.next )
@@ -270,6 +271,10 @@ public:
         ref = node->ref;
         tmeta->outbufs.next = node->next;
         delete node;
+        if( nullptr != is_last )
+        {
+            *is_last = ( nullptr == tmeta->outbufs.next );
+        }
         return true;
     }
 
