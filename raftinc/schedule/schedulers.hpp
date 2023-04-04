@@ -27,5 +27,6 @@
 #include "raftinc/schedule/schedule_basic.hpp"
 #include "raftinc/schedule/schedule_oneshot.hpp"
 #include "raftinc/schedule/schedule_burst.hpp"
+#include "raftinc/schedule/schedule_pollingsource.hpp"
 
 #endif /* END RAFT_SCHEDULE_SCHEDULERS_HPP */
