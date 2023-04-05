@@ -42,6 +42,7 @@ class TaskAllocMeta;
 enum TaskType
 {
     POLLING_WORKER,
+    CONDVAR_WORKER,
     ONE_SHOT
 };
 
@@ -70,10 +71,6 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) Task
     virtual bool pop( const port_name_t &portname, bool dryrun ) = 0;
 
     virtual bool allocate( const port_name_t &portname, bool dryrun ) = 0;
-
-    virtual StreamingData &getDataIn() = 0;
-
-    virtual StreamingData &getBufOut() = 0;
 };
 
 } /** end namespace raft */

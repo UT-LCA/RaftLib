@@ -104,6 +104,7 @@ public:
             store = new store_map_t;
             used = new store_map_t;
         }
+        selected = 0;
     }
 
     ~StreamingData()
@@ -190,9 +191,8 @@ public:
         ref_ptr = ( store->end() == iter ) ? nullptr : &iter->second;
         if( ! is1Piece() )
         {
-            //TODO: if multiple output ports for a oneshot task using
-            // Kernel::AllocMeta, this gonna cause multiple-writers
-            Singleton::allocate()->select( task, name_val, isInput() );
+            selected =
+                Singleton::allocate()->select( task, name_val, isInput() );
         }
         return *this;
     }
@@ -226,7 +226,7 @@ public:
         {
             DataRef ref;
             ref.set< T >( item );
-            Singleton::allocate()->taskPop( task, ref );
+            Singleton::allocate()->taskPop( task, selected, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
@@ -239,14 +239,15 @@ public:
     {
         if( nullptr == ref_ptr )
         {
-            return Singleton::allocate()->taskPeek( task ).get< T >();
+            return
+                Singleton::allocate()->taskPeek( task, selected ).get< T >();
         }
         return ref_ptr->get< T >();
     }
 
     void recycle()
     {
-        Singleton::allocate()->taskRecycle( task );
+        Singleton::allocate()->taskRecycle( task, selected );
         single_store_valid = false;
     }
 
@@ -257,7 +258,7 @@ public:
         {
             DataRef ref;
             ref.set< T >( item );
-            Singleton::allocate()->taskPush( task, ref );
+            Singleton::allocate()->taskPush( task, selected, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
@@ -281,7 +282,7 @@ public:
         {
             DataRef ref;
             ref.set< T >( item );
-            Singleton::allocate()->taskPush( task, ref );
+            Singleton::allocate()->taskPush( task, selected, ref );
             return;
         }
         //TODO: it assumes assign operator is defined for T
@@ -301,18 +302,19 @@ public:
     template< class T >
     T &allocate()
     {
-        if( nullptr == ref_ptr )
+        if( nullptr != ref_ptr )
         {
-            return Singleton::allocate()->taskAllocate( task ).get< T >();
+            return ref_ptr->get< T >();
         }
-        return ref_ptr->get< T >();
+        return
+            Singleton::allocate()->taskAllocate( task, selected ).get< T >();
     }
 
     void send()
     {
         if( nullptr == ref_ptr )
         {
-            Singleton::allocate()->taskSend( task );
+            Singleton::allocate()->taskSend( task, selected );
             return;
         }
         ref_ptr = nullptr;
@@ -380,6 +382,7 @@ private:
     store_map_t::iterator iter;
     store_map_t *store = nullptr;
     store_map_t *used = nullptr;
+    int selected;
 }; /** end StreamingData decl **/
 
 } /** end namespace raft */

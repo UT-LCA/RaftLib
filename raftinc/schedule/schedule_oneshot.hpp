@@ -167,7 +167,8 @@ protected:
 #endif
         PortInfo *my_pi;
         DataRef ref;
-        while( Singleton::allocate()->schedPop( task, my_pi, ref ) )
+        int selected = 0;
+        while( Singleton::allocate()->schedPop( task, my_pi, ref, &selected ) )
         {
             auto *other_pi( my_pi->other_port );
             //TODO: deal with a kernel depends on multiple producers

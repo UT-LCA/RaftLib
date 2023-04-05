@@ -100,20 +100,6 @@ public:
     virtual bool allocate( Task *task, bool dryrun ) = 0;
 
     /**
-     * packInputData - function that packages and returns input data.
-     */
-    bool packInputData( Task *task )
-    {
-        return (this)->pop( task, false );
-    }
-
-    StreamingData &getInputData( Task *task )
-    {
-        (this)->pop( task, true );
-        return task->getDataIn();
-    }
-
-    /**
      * addInput - wrap protected add_input method to expose it for the
      * helper classes used by lambdak, otherwise the kernel itself should
      * use add_input() instead
@@ -133,21 +119,6 @@ public:
     void addOutput( const port_name_t &name )
     {
         add_output< T >( name );
-    }
-
-    /**
-     * packOutputBuf - function that allocate and packages the output
-     * buffer.
-     */
-    bool packOutputBuf( Task *task )
-    {
-        return (this)->allocate( task, false );
-    }
-
-    StreamingData &getOutputBuf( Task *task )
-    {
-        (this)->allocate( task, true );
-        return task->getBufOut();
     }
 
     std::size_t getId()

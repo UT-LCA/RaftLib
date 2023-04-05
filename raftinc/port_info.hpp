@@ -64,21 +64,14 @@ struct BufferInfo
  */
 struct PortInfo4Runtime
 {
-    /* AllocateFIFO */
     FIFOFunctor *fifo_functor;
-    FIFO *fifo;
+    FIFO **fifos;
+    int nfifos;
     BufferInfo existing_buffer;
-    //using FIFO_constructor =
-    //    FIFO* ( std::size_t /** n_items **/,
-    //            std::size_t /** alignof */,
-    //            void* /** data struct **/ );
-    //FIFO_constructor *fifo_const;
 
     template< class T >
     void init()
     {
-        //fifo_const =
-        //    RingBuffer< T, Buffer::Type::Heap, false >::make_new_fifo;
         fifo_functor = new FIFOFunctorT< T >();
     }
 };
@@ -122,8 +115,6 @@ struct PortInfo
     port_key_t other_name = null_port_value;
 
     const PortInfo *other_port = nullptr;
-
-    Allocate *alloc = nullptr;
 
     PortInfo4Runtime runtime_info;
 };

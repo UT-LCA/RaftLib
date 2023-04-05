@@ -131,40 +131,6 @@ public:
         return true;
     }
 
-    virtual bool getDataIn( Task *task, const port_key_t &name )
-    {
-        throw MethodNotImplementdException(
-                "AllocateNew::getDataIn(Task*, const port_key_t&)" );
-        UNUSED( task );
-        UNUSED( name );
-        return true;
-    }
-
-    virtual bool getBufOut( Task *task, const port_key_t &name )
-    {
-        throw MethodNotImplementdException(
-                "AllocateNew::getBufOut(Task*, const port_key_t&)" );
-        UNUSED( task );
-        UNUSED( name );
-        return true;
-    }
-
-    virtual StreamingData &getDataIn( Task *task )
-    {
-        throw MethodNotImplementdException(
-                "AllocateNew::getDataIn(Task*)" );
-        auto *ptr( new StreamingData() );
-        return *ptr;
-    }
-
-    virtual StreamingData &getBufOut( Task *task )
-    {
-        throw MethodNotImplementdException(
-                "AllocateNew::getBufOut(Task*)" );
-        auto *ptr( new StreamingData() );
-        return *ptr;
-    }
-
     virtual void taskInit( Task *task, bool alloc_input )
     {
         assert( ONE_SHOT == task->type );
@@ -196,38 +162,43 @@ public:
         return true;
     }
 
-    virtual void select( Task *task, const port_key_t &name, bool is_in )
+    virtual int select( Task *task, const port_key_t &name, bool is_in )
     {
         UNUSED( is_in ); /* OneShot task has input selected in StreamingData */
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
         auto iter( task->kernel->output.find( name ) );
         assert( task->kernel->output.end() != iter );
         tmeta->selected_out = &iter->second;
+        return 0;
     }
 
-    virtual void taskPop( Task *task, DataRef &item )
+    virtual void taskPop( Task *task, int selected, DataRef &item )
     {
         // oneshot task should have all input data satisfied by StreamingData
         throw MethodNotImplementdException( "AllocateNew::taskPop()" );
         UNUSED( task );
+        UNUSED( selected );
         UNUSED( item );
     }
 
-    virtual DataRef taskPeek( Task *task )
+    virtual DataRef taskPeek( Task *task, int selected )
     {
         // oneshot task should have all input data satisfied by StreamingData
         throw MethodNotImplementdException( "AllocateNew::taskPeek()" );
         UNUSED( task );
+        UNUSED( selected );
         return DataRef();
     }
 
-    virtual void taskRecycle( Task *task )
+    virtual void taskRecycle( Task *task, int selected )
     {
         UNUSED( task );
+        UNUSED( selected );
     }
 
-    virtual void taskPush( Task *task, DataRef &item )
+    virtual void taskPush( Task *task, int selected, DataRef &item )
     {
+        UNUSED( selected );
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
         auto *functor( tmeta->selected_out->runtime_info.fifo_functor );
         auto *node( new BufListNode() );
@@ -238,8 +209,9 @@ public:
         tmeta->outbufs.next = node;
     }
 
-    virtual DataRef taskAllocate( Task *task )
+    virtual DataRef taskAllocate( Task *task, int selected )
     {
+        UNUSED( selected );
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
         auto *functor( tmeta->selected_out->runtime_info.fifo_functor );
         //TODO: merge the following two news into one tcache_alloc()
@@ -253,14 +225,16 @@ public:
         return node->ref;
     }
 
-    virtual void taskSend( Task *task )
+    virtual void taskSend( Task *task, int selected )
     {
         UNUSED( task );
+        UNUSED( selected );
     }
 
     virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
-                           bool *is_last )
+                           int *selected, bool *is_last )
     {
+        UNUSED( selected );
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
         if( nullptr == tmeta->outbufs.next )
         {

@@ -80,7 +80,7 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
     }
 };
 
-struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorkerCV : public PollingWorker
+struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 {
 #if USE_UT
     rt::Mutex m;
@@ -90,11 +90,12 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorkerCV : public PollingWorker
     std::condition_variable cv;
 #endif
 
-    PollingWorkerCV() : PollingWorker()
+    CondVarWorker() : PollingWorker()
     {
+        type = CONDVAR_WORKER;
     }
 
-    virtual ~PollingWorkerCV() = default;
+    virtual ~CondVarWorker() = default;
 
     void wait()
     {

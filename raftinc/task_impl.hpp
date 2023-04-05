@@ -37,52 +37,22 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) TaskImpl : public Task
 
     virtual bool pop( const port_name_t &portname, bool dryrun )
     {
-        if( dryrun )
-        {
+        UNUSED( dryrun );
 #if STRING_NAMES
-            return Singleton::allocate()->getDataIn( this, portname );
+        return Singleton::allocate()->dataInReady( this, portname );
 #else
-            return Singleton::allocate()->getDataIn( this, portname.val );
+        return Singleton::allocate()->dataInReady( this, portname.val );
 #endif
-        }
-        else
-        {
-#if STRING_NAMES
-            return Singleton::allocate()->dataInReady( this, portname );
-#else
-            return Singleton::allocate()->dataInReady( this, portname.val );
-#endif
-        }
     }
 
     virtual bool allocate( const port_name_t &portname, bool dryrun )
     {
-        if( dryrun )
-        {
+        UNUSED( dryrun );
 #if STRING_NAMES
-            return Singleton::allocate()->getBufOut( this, portname );
+        return Singleton::allocate()->bufOutReady( this, portname );
 #else
-            return Singleton::allocate()->getBufOut( this, portname.val );
+        return Singleton::allocate()->bufOutReady( this, portname.val );
 #endif
-        }
-        else
-        {
-#if STRING_NAMES
-            return Singleton::allocate()->bufOutReady( this, portname );
-#else
-            return Singleton::allocate()->bufOutReady( this, portname.val );
-#endif
-        }
-    }
-
-    virtual StreamingData &getDataIn()
-    {
-        return Singleton::allocate()->getDataIn( this );
-    }
-
-    virtual StreamingData &getBufOut()
-    {
-        return Singleton::allocate()->getBufOut( this );
     }
 };
 

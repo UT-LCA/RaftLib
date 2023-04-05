@@ -95,8 +95,10 @@ protected:
 #endif
         PortInfo *my_pi;
         DataRef ref;
+        int selected = 0;
         bool is_last = false;
-        while( Singleton::allocate()->schedPop( task, my_pi, ref, &is_last ) )
+        while( Singleton::allocate()->schedPop(
+                    task, my_pi, ref, &selected, &is_last ) )
         {
             auto *other_pi( my_pi->other_port );
             if( ! is_last )

@@ -142,7 +142,7 @@ public:
     virtual bool shouldExit( Task* task )
     {
         if( ! Singleton::allocate()->taskHasInputPorts( task ) &&
-            ! Singleton::allocate()->getDataIn( task, null_port_value ) )
+            ! Singleton::allocate()->dataInReady( task, null_port_value ) )
         {
             return true;
         }
@@ -152,7 +152,7 @@ public:
 
     virtual bool readyRun( Task* task )
     {
-        return Singleton::allocate()->getDataIn( task, null_port_value );
+        return Singleton::allocate()->dataInReady( task, null_port_value );
     }
 
 
@@ -232,12 +232,6 @@ protected:
                 nclones, std::memory_order_relaxed );
         for( int i( 0 ); nclones > i; ++i )
         {
-            /**
-             * thread function takes a reference back to the scheduler
-             * accessible done boolean flag, essentially when the
-             * kernel is done, it can be rescheduled...and this
-             * handles that.
-             */
             PollingWorker *task ( new_a_worker() );
             task->kernel = kernel;
             task->id = worker_id + i;
@@ -255,7 +249,7 @@ protected:
     /**
      * new_a_worker - simply get the pointer to a new PollingWorker instance
      * made this a virtual methid in protected section in order to allow
-     * ScheduleCV to substitue it with a PollingWorkerCV instance
+     * ScheduleCV to substitue it with a CondVarWorker instance
      * @return PollingWorker*
      */
     virtual PollingWorker *new_a_worker()
@@ -313,7 +307,7 @@ public:
 
     virtual void reschedule( Task *task )
     {
-        auto *worker( static_cast< PollingWorkerCV* >( task ) );
+        auto *worker( static_cast< CondVarWorker* >( task ) );
         worker->wait();
     }
 
@@ -321,7 +315,7 @@ protected:
 
     virtual PollingWorker *new_a_worker()
     {
-        return new PollingWorkerCV();
+        return new CondVarWorker();
     }
 
 };

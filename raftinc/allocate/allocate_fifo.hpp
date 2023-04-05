@@ -26,8 +26,9 @@
 #ifndef RAFT_ALLOCATE_ALLOCATE_FIFO_HPP
 #define RAFT_ALLOCATE_ALLOCATE_FIFO_HPP  1
 
-#include <vector>
+#include <numeric>
 #include <unordered_set>
+#include <unordered_map>
 
 #if UT_FOUND
 #include <ut>
@@ -41,6 +42,7 @@
 #include "raftinc/pollingworker.hpp"
 #include "raftinc/oneshottask.hpp"
 #include "raftinc/allocate/allocate.hpp"
+#include "raftinc/allocate/fifoallocmeta.hpp"
 #include "raftinc/allocate/fifo.hpp"
 #include "raftinc/allocate/ringbuffer.tcc"
 #include "raftinc/allocate/buffer/buffertypes.hpp"
@@ -62,90 +64,6 @@
 namespace raft
 {
 
-struct TaskFIFOPort
-{
-    FIFO **fifos;
-    FIFOFunctor *functor;
-    const int nfifos;
-    int idx;
-    PollingWorkerCV **consumers;
-    bool readonly = false;
-    /* when in Kernel::AllocMeta, there are multi-readers but avoid writing */
-    TaskFIFOPort( int n ) : nfifos( n )
-    {
-        fifos = new FIFO*[ n ];
-        consumers = new PollingWorkerCV*[ n ]();
-        // serve as the cache of fifo_consumers
-    }
-    /* define the following constructor to allow unordered_map index access */
-    TaskFIFOPort() : nfifos( 0 )
-    {
-        throw MethodNotImplementdException( "TaskFIFOPort()" );
-    }
-    TaskFIFOPort( TaskFIFOPort &&other ) :
-        fifos( other.fifos ), functor( other.functor ), nfifos( other.nfifos ),
-        idx( other.idx )
-    {
-        other.fifos = nullptr;
-    }
-    TaskFIFOPort( const TaskFIFOPort &other ) = delete;
-    virtual ~TaskFIFOPort()
-    {
-        if( nullptr != fifos )
-        {
-            delete[] fifos;
-        }
-        if( nullptr != consumers )
-        {
-            delete[] consumers;
-        }
-    }
-    virtual bool wakupConsumer()
-    {
-        if( readonly )
-        {
-            return true;
-        }
-        // wake up the worker waiting for data
-        if( nullptr != consumers[ idx ] )
-        {
-            consumers[ idx ]->wakeup();
-            return true;
-        }
-        return false;
-        /* let AllocateFIFOCV knows that it should looking up fifo_consumers */
-    }
-    virtual void nextFIFO()
-    {
-        if( readonly )
-        {
-            return;
-        }
-        // select next fifo in Round-Robin manner
-        idx = ( idx + 1 ) % nfifos;
-    }
-};
-
-struct TaskFIFOAllocMeta : public TaskAllocMeta
-{
-    TaskFIFOAllocMeta() :
-        TaskAllocMeta(), selected_in( nullptr ), selected_out( nullptr ) {}
-    virtual ~TaskFIFOAllocMeta() = default;
-
-    std::unordered_map< port_key_t, TaskFIFOPort* > name2port_in;
-    std::unordered_map< port_key_t, TaskFIFOPort* > name2port_out;
-
-    /* use vector for faster iterating */
-    std::vector< TaskFIFOPort > ports_in;
-    std::vector< TaskFIFOPort > ports_out;
-
-    TaskFIFOPort *selected_in;
-    TaskFIFOPort *selected_out;
-
-    Kernel::port_map_t::iterator drain_iter;
-    /* used by schedPop to memorize which in ports_out should be the next */
-};
-
 class AllocateFIFO : public Allocate
 {
 public:
@@ -160,15 +78,9 @@ public:
      */
     virtual ~AllocateFIFO()
     {
-        for( auto &p : port_fifo )
+        for( auto *fifo : allocated_fifos )
         {
-            for( auto *fifo : *p.second )
-            {
-                delete( fifo );
-            }
-            /* clear the vector to avoid double free because port_fifo
-             * is indexed by both port_info */
-            p.second->clear();
+            delete( fifo );
         }
     }
 
@@ -176,38 +88,32 @@ public:
     {
         auto func = [ & ]( PortInfo &a, PortInfo &b, void *data )
         {
-            const int nfifos = std::max( a.my_kernel->getCloneFactor(),
+            const int nfifos = std::lcm( a.my_kernel->getCloneFactor(),
                                          b.my_kernel->getCloneFactor() );
-            auto *fifos( new std::vector< FIFO* >( nfifos + 1 ) );
-            (this)->port_fifo[ &a ] = fifos;
-            (this)->port_fifo[ &b ] = fifos;
+            a.runtime_info.nfifos = b.runtime_info.nfifos = nfifos;
+            auto *fifos( new FIFO*[ nfifos + 1 ] ); /* TODO: free the array? */
+            /* allocate 1 more FIFO for oneshot tasks */
+            a.runtime_info.fifos = b.runtime_info.fifos = fifos;
+            auto *functor( a.runtime_info.fifo_functor );
             if( nullptr != a.runtime_info.existing_buffer.ptr )
             {
                 /* use existing buffer from a */
-                fifos->at( 0 ) = get_FIFOFunctor(
-                        a )->make_new_fifo(
-                            a.runtime_info.existing_buffer.nitems,
-                            a.runtime_info.existing_buffer.start_index,
-                            a.runtime_info.existing_buffer.ptr );
+                fifos[ 0 ] = functor->make_new_fifo(
+                        a.runtime_info.existing_buffer.nitems,
+                        a.runtime_info.existing_buffer.start_index,
+                        a.runtime_info.existing_buffer.ptr );
             }
             else
             {
                 for( int i( 0 ); nfifos > i; ++i )
                 {
-                    fifos->at( i ) =
-                        get_FIFOFunctor( a )->make_new_fifo(
-                                INITIAL_ALLOC_SIZE,
-                                ALLOC_ALIGN_WIDTH,
-                                nullptr );
+                    fifos[ i ] = functor->make_new_fifo(
+                            INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
                 }
             }
             /* allocate one more fifo as the mutex-protected fifo */
-            fifos->back() =
-                get_FIFOFunctor(
-                        a )->make_new_fifo_mutexed( INITIAL_ALLOC_SIZE,
-                                                    ALLOC_ALIGN_WIDTH,
-                                                    nullptr );
-            a.runtime_info.fifo = b.runtime_info.fifo = fifos->at( 0 );
+            fifos[ nfifos ] = functor->make_new_fifo_mutexed(
+                    INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
         };
 
         GraphTools::BFS( dag.getSourceKernels(), func );
@@ -215,21 +121,22 @@ public:
         /* create per-kernel alloc_meta for repeated use by oneshot tasks */
         for( auto *k : dag.getKernels() )
         {
-            auto *tmeta( new TaskFIFOAllocMeta() );
+            auto *tmeta( new KernelFIFOAllocMeta(
+                        k->input.size(), k->output.size() ) );
             k->setAllocMeta( tmeta );
 
+            int idx = 0;
+            for( auto &p : k->input )
+            {
+                tmeta->name2port_in.emplace( p.first, idx );
+                tmeta->ports_in_info[ idx++ ] = &p.second;
+            }
+            idx = 0;
             for( auto &p : k->output )
             {
-                tmeta->ports_out.emplace_back( 1 );
-                tmeta->name2port_out.emplace( p.first,
-                                              &tmeta->ports_out.back() );
-                auto &port( tmeta->ports_out.back() );
-                port.readonly = true; /* avoid concurrent writes to the port */
-                port.idx = 0;
-                port.fifos[ 0 ] = port_fifo[ &p.second ]->back();
-                port.functor = p.second.runtime_info.fifo_functor;
+                tmeta->name2port_out.emplace( p.first, idx );
+                tmeta->ports_out_info[ idx++ ] = &p.second;
             }
-            tmeta->drain_iter = k->output.begin();
         }
 
         /* preset consumers for each fifo to be nullptr, this is really just the
@@ -271,27 +178,7 @@ public:
 
     virtual bool bufOutReady( Task *task, const port_key_t &name )
     {
-        return kernel_has_output_buf( task->kernel );
-    }
-
-    virtual bool getDataIn( Task *task, const port_key_t &name )
-    {
-        return task_has_input_data( task, name );
-    }
-
-    virtual bool getBufOut( Task *task, const port_key_t &name )
-    {
-        return kernel_has_output_buf( task->kernel, name );
-    }
-
-    virtual StreamingData &getDataIn( Task *task )
-    {
-        return kernel_pack_input_data( task->kernel );
-    }
-
-    virtual StreamingData &getBufOut( Task *task )
-    {
-        return task_pack_output_buf( task );
+        return true;
     }
 
     virtual void taskInit( Task *task, bool alloc_input )
@@ -300,6 +187,11 @@ public:
         {
             auto *t( static_cast< PollingWorker* >( task ) );
             polling_worker_init( t );
+        }
+        else if( CONDVAR_WORKER == task->type )
+        {
+            auto *t( static_cast< CondVarWorker* >( task ) );
+            condvar_worker_init( t );
         }
         else if( ONE_SHOT == task->type )
         {
@@ -315,10 +207,6 @@ public:
 
     virtual void taskCommit( Task *task )
     {
-        if( POLLING_WORKER == task->type )
-        {
-            return;
-        }
         if( ONE_SHOT == task->type )
         {
             oneshot_commit( static_cast< OneShotTask* >( task ) );
@@ -327,129 +215,139 @@ public:
 
     virtual void invalidateOutputs( Task *task )
     {
-        if( POLLING_WORKER == task->type )
+        if( ONE_SHOT != task->type )
         {
-            auto *t( static_cast< PollingWorker* >( task ) );
-            polling_worker_invalidate_outputs( t );
+            auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                        task->alloc_meta ) );
+            tmeta->invalidateOutputs();
         }
         //TODO: design for oneshot task
     }
 
     virtual bool taskHasInputPorts( Task *task )
     {
-        if( POLLING_WORKER == task->type )
+        if( ONE_SHOT != task->type )
         {
-            auto *t( static_cast< PollingWorker* >( task ) );
-            return polling_worker_has_input_ports( t );
+            auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                        task->alloc_meta ) );
+            return tmeta->hasValidInput();
         }
         //TODO: design for oneshot task
         return true;
     }
 
-    virtual void select( Task *task, const port_key_t &name, bool is_in )
+    virtual int select( Task *task, const port_key_t &name, bool is_in )
     {
-        //assert( task->alloc_meta != task->kernel->getAllocMeta() );
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
         if( is_in )
         {
-            auto iter( tmeta->name2port_in.find( name ) );
-            assert( tmeta->name2port_in.end() != iter );
-            tmeta->selected_in = iter->second;
+            return tmeta->selectIn( name );
         }
         else
         {
-            auto iter( tmeta->name2port_out.find( name ) );
-            assert( tmeta->name2port_out.end() != iter );
-            tmeta->selected_out = iter->second;
+            return tmeta->selectOut( name );
         }
     }
 
-    virtual void taskPop( Task *task, DataRef &item )
+    virtual void taskPop( Task *task, int selected, DataRef &item )
     {
         // oneshot task should have all input data satisfied by StreamingData
         assert( ONE_SHOT != task->type );
 
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( nullptr == tmeta->selected_in ?
-                    &tmeta->ports_in[ 0 ] : tmeta->selected_in );
-        port->functor->pop( port->fifos[ port->idx ], item );
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        tmeta->getPairIn( &functor, &fifo, selected );
+        functor->pop( fifo, item );
     }
 
-    virtual DataRef taskPeek( Task *task )
+    virtual DataRef taskPeek( Task *task, int selected )
     {
         // oneshot task should have all input data satisfied by StreamingData
         assert( ONE_SHOT != task->type );
 
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( nullptr == tmeta->selected_in ?
-                    &tmeta->ports_in[ 0 ] : tmeta->selected_in );
-        return port->functor->peek( port->fifos[ port->idx ] );
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        tmeta->getPairIn( &functor, &fifo, selected );
+        return functor->peek( fifo );
     }
 
-    virtual void taskRecycle( Task *task )
+    virtual void taskRecycle( Task *task, int selected )
     {
         if( ONE_SHOT != task->type )
         {
-            auto *tmeta(
-                    static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-            auto *port( nullptr == tmeta->selected_in ?
-                        &tmeta->ports_in[ 0 ] : tmeta->selected_in );
-            port->functor->recycle( port->fifos[ port->idx ] );
+            FIFOFunctor *functor;
+            FIFO *fifo;
+            auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                        task->alloc_meta ) );
+            tmeta->getPairIn( &functor, &fifo, selected );
+            return functor->recycle( fifo );
         }
         // else do nothing, b/c we have dedicated the data for this task
     }
 
-    virtual void taskPush( Task *task, DataRef &item )
+    virtual void taskPush( Task *task, int selected, DataRef &item )
     {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( nullptr == tmeta->selected_out ?
-                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
-        port->functor->push( port->fifos[ port->idx ], item );
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        tmeta->getPairOut( &functor, &fifo, selected, ONE_SHOT == task->type );
+        functor->push( fifo, item );
         // wake up the worker waiting for data
-        (this)->port_wakeup_consumer( port );
-        port->nextFIFO();
+        (this)->wakeup_consumer( tmeta, selected );
+        tmeta->nextFIFO( selected );
     }
 
-    virtual DataRef taskAllocate( Task *task )
+    virtual DataRef taskAllocate( Task *task, int selected )
     {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( nullptr == tmeta->selected_out ?
-                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
-        return port->functor->allocate( port->fifos[ port->idx ] );
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        tmeta->getPairOut( &functor, &fifo, selected, ONE_SHOT == task->type );
+        return functor->allocate( fifo );
     }
 
-    virtual void taskSend( Task *task )
+    virtual void taskSend( Task *task, int selected )
     {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto *port( nullptr == tmeta->selected_out ?
-                    &tmeta->ports_out[ 0 ] : tmeta->selected_out );
-        port->functor->send( port->fifos[ port->idx ] );
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        tmeta->getPairOut( &functor, &fifo, selected, ONE_SHOT == task->type );
+        functor->send( fifo );
         // wake up the worker waiting for data
-        (this)->port_wakeup_consumer( port );
-        port->nextFIFO();
+        (this)->wakeup_consumer( tmeta, selected );
+        tmeta->nextFIFO( selected );
     }
 
     virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
-                           bool *is_last )
+                           int *selected, bool *is_last )
     {
         assert( ONE_SHOT == task->type );
         UNUSED( is_last );
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        auto iter( tmeta->drain_iter );
-        while ( iter != task->kernel->output.end() )
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
+        while ( *selected < task->kernel->output.size() )
         {
-            auto &pi( iter->second );
-            auto *functor( pi.runtime_info.fifo_functor );
-            auto *fifo( port_fifo[ &pi ]->back() );
+            FIFOFunctor *functor;
+            FIFO *fifo;
+            tmeta->getDrainPairOut( &functor, &fifo, *selected );
             if( 0 >= fifo->size() )
             {
-                iter++;
+                *selected++;
                 continue;
             }
             ref = functor->oneshot_allocate();
+            /* NOTE: might have race condition, fifo was not empty but it got
+             * popped by another oneshot task doing schedPop then blocking */
             functor->pop( fifo, ref );
-            pi_ptr = &pi;
-            tmeta->drain_iter = iter;
+            pi_ptr = tmeta->getPortsOutInfo()[ *selected ];
             return true;
         }
         return false;
@@ -457,92 +355,9 @@ public:
 
 protected:
 
-    static inline FIFO* get_FIFO( const PortInfo &pi )
-    {
-        return pi.runtime_info.fifo;
-    }
-
     static inline FIFOFunctor* get_FIFOFunctor( const PortInfo &pi )
     {
         return pi.runtime_info.fifo_functor;
-    }
-
-
-    /**
-     * kernel_has_input_data - check each input port for available
-     * data, returns true if any of the input ports has available
-     * data.
-     * @param kernel - raft::Kernel*
-     * @return bool  - true if input data available.
-     */
-    static bool kernel_has_input_data( Kernel *kernel,
-                                       const port_key_t &name =
-                                       null_port_value )
-    {
-        auto &port_list( kernel->input );
-        if( 0 == port_list.size() )
-        {
-           /** only output ports, keep calling till exits **/
-           return( true );
-        }
-
-        if( null_port_value != name )
-        {
-            auto &info( kernel->getInput( name ) );
-            const auto size( get_FIFO( info )->size() );
-            return ( size > 0 );
-        }
-
-        /**
-         * NOTE: this was added as a reqeuest, need to update wiki,
-         * the first hit to this one will take an extra few cycles
-         * to process the jmp, however, after that, the branch
-         * taken is incredibly easy and we should be able to do
-         * this as if the switch statement wasn't there at all.
-         * - an alternative to using the kernel variable would
-         * be to implement a new subclass of kernel...that's doable
-         * too but we'd have to make dependent template functions
-         * that would use the type info to select the right behavior
-         * which we're doing dynamically below in the switch statement.
-         */
-        switch( kernel->sched_trigger )
-        {
-            case( trigger::any_port ):
-            {
-                for( auto &p : port_list )
-                {
-                   const auto size( get_FIFO( p.second )->size() );
-                   if( size > 0 )
-                   {
-                      return( true );
-                   }
-                }
-            }
-            break;
-            case( trigger::all_port ):
-            {
-                for( auto &p : port_list )
-                {
-                   const auto size( get_FIFO( p.second )->size() );
-                   /** no data avail on this port, return false **/
-                   if( size == 0 )
-                   {
-                      return( false );
-                   }
-                }
-                /** all ports have data, return true **/
-                return( true );
-            }
-            break;
-            default:
-            {
-                //TODO add exception class here
-                std::cerr << "invalid scheduling behavior set, exiting!\n";
-                exit( EXIT_FAILURE );
-            }
-        }
-        /** we should have returned before here, keep compiler happy **/
-        return( false );
     }
 
     /**
@@ -556,233 +371,37 @@ protected:
     bool task_has_input_data( Task *task,
                               const port_key_t &name = null_port_value )
     {
-        assert( POLLING_WORKER == task->type );
+        assert( ONE_SHOT != task->type );
 
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( task->alloc_meta ) );
-        if( 0 == tmeta->ports_in.size() )
-        {
-            /** only output ports, keep calling till exits **/
-            return( true );
-        }
+        auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
+                    task->alloc_meta ) );
 
-        if( null_port_value != name )
-        {
-            auto &port( *tmeta->name2port_in[ name ] );
-            auto *fifos( port.fifos );
-            auto &nfifos( port.nfifos );
-            auto &idx( port.idx );
-            for( int i( 0 ); nfifos > i; ++i )
-            {
-                const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
-                if( size > 0 )
-                {
-                    idx = ( idx + i ) % nfifos;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        for( auto &port : tmeta->ports_in )
-        {
-            auto *fifos( port.fifos );
-            auto &nfifos( port.nfifos );
-            auto &idx( port.idx );
-            for( int i( 0 ); nfifos > i; ++i )
-            {
-                const auto size( fifos[ ( idx + i ) % nfifos ]->size() );
-                if( size > 0 )
-                {
-                    idx = ( idx + i ) % nfifos;
-                    return true;
-                }
-            }
-        }
-
-        return( false );
-    }
-
-
-    /**
-     * kernel_has_output_buf - check each output port for available
-     * buffer, returns true if each output port has available
-     * buffer.
-     * @param kernel - raft::Kernel*
-     * @return bool  - true if output buffer available.
-     */
-    static bool kernel_has_output_buf( Kernel *kernel,
-                                       const port_key_t &name =
-                                       null_port_value )
-    {
-        auto &port_list( kernel->output );
-        if( 0 == port_list.size() )
-        {
-           /** only output ports, keep calling till exits **/
-           return( false );
-        }
-
-        if( null_port_value != name )
-        {
-            auto &info( kernel->getOutput( name ) );
-            const auto cap( get_FIFO( info )->capacity() );
-            return ( cap > 0 );
-        }
-
-        for( auto &p : port_list )
-        {
-           const auto cap( get_FIFO( p.second )->capacity() );
-           /** no data avail on this port, return false **/
-           if( cap == 0 )
-           {
-              return( false );
-           }
-        }
-        /** all ports have buffer, return true **/
-        return( true );
-    }
-
-    /**
-     * kernel_has_no_input_ports - pretty much exactly like the
-     * function name says, if the param kernel has no valid
-     * input ports (this function assumes that kernelHasInputData()
-     * has been called and returns false before this function
-     * is called) then it returns true.
-     * @params   kernel - raft::kernel*
-     * @return  bool   - true if no valid input ports avail
-     */
-    static bool kernel_has_no_input_ports( Kernel *kernel )
-    {
-        auto &port_list( kernel->input );
-        /** assume data check is already complete **/
-        for( auto &p : port_list )
-        {
-            if( ! get_FIFO( p.second )->is_invalid() )
-            {
-                return( false );
-            }
-        }
-        return( true );
-    }
-
-
-    /**
-     * kernel_pack_input_data - assemble data of input port.
-     * @param kernel - raft::Kernel*
-     * @return StreamingData.
-     */
-    static StreamingData &kernel_pack_input_data( Kernel *kernel )
-    {
-        auto *ptr( new StreamingData() );
-        auto &port_list( kernel->input );
-
-        for( auto &p : port_list )
-        {
-            FIFO *fifo( get_FIFO( p.second ) );
-            const auto size( fifo->size() );
-            if( 0 < size )
-            {
-                ptr->set( p.first,
-                          get_FIFOFunctor( p.second )->peek( fifo ) );
-            }
-        }
-        return( *ptr );
-    }
-
-
-    /**
-     * kernel_pack_output_buf - assemble buffer for outputs.
-     * @param kernel - raft::Kernel*
-     * @return StreamingData.
-     */
-    static StreamingData &kernel_pack_output_buf( Kernel *kernel )
-    {
-        auto *ptr( new StreamingData() );
-        auto &port_list( kernel->output );
-
-        for( auto &p : port_list )
-        {
-            FIFO *fifo( get_FIFO( p.second ) );
-            const auto cap( fifo->capacity() );
-            if( 0 < cap )
-            {
-                ptr->set( p.first,
-                          get_FIFOFunctor( p.second )->allocate( fifo ) );
-            }
-        }
-        return( *ptr );
-    }
-
-    /**
-     * task_pack_output_buf - assemble buffer for outputs.
-     * @param task - raft::Task*
-     * @return StreamingData.
-     */
-    static StreamingData &task_pack_output_buf( Task *task )
-    {
-        assert( ONE_SHOT == task->type );
-        auto &buf( kernel_pack_output_buf( task->kernel ) );
-        auto *t( static_cast< OneShotTask* >( task ) );
-        t->stream_out = &buf;
-        return buf;
+        return tmeta->hasInputData( name );
     }
 
     inline void polling_worker_init( PollingWorker *worker )
     {
-        auto *kernel( worker->kernel );
-        auto nclones( kernel->getCloneFactor() );
+        auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
+                    worker->kernel->getAllocMeta() ) );
 
-        auto *tmeta( new TaskFIFOAllocMeta() );
-        worker->alloc_meta = tmeta;
+        if( FIFOAllocMetaInterface::qualifyStatic( worker->kernel ) )
+        {
+            worker->alloc_meta = kmeta;
+        }
+        else
+        {
+            worker->alloc_meta = new RRTaskFIFOAllocMeta( *kmeta,
+                                                          worker->clone_id );
+        }
+    }
 
-        auto &input_ports( kernel->input );
-        tmeta->ports_in.reserve( input_ports.size() );
-        for( auto &p : input_ports )
-        {
-            const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
-            const auto fifo_share(
-                    nfifos / nclones +
-                    ( worker->clone_id < int( nfifos % nclones ) ? 1 : 0 ) );
-            tmeta->ports_in.emplace_back( fifo_share );
-            tmeta->name2port_in.emplace( p.first, &tmeta->ports_in.back() );
-            auto &port( tmeta->ports_in.back() );
-            port.idx = 0;
-            for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
-            {
-                port.fifos[ port.idx++ ] = port_fifo[ &p.second ]->at( i );
-            }
-            port.idx = 0;
-            port.functor = p.second.runtime_info.fifo_functor;
-        }
-        // preselect to avoid indexing with string
-        if( 1 == tmeta->ports_in.size() )
-        {
-            tmeta->selected_in = &tmeta->ports_in[ 0 ];
-        }
+    inline void condvar_worker_init( CondVarWorker *worker )
+    {
+        auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
+                    worker->kernel->getAllocMeta() ) );
 
-        auto &output_ports( kernel->output );
-        tmeta->ports_out.reserve( output_ports.size() );
-        for( auto &p : output_ports )
-        {
-            const auto nfifos( port_fifo[ &p.second ]->size() - 1 );
-            const auto fifo_share(
-                    nfifos / nclones +
-                    ( worker->clone_id < int( nfifos % nclones ) ? 1 : 0 ) );
-            tmeta->ports_out.emplace_back( fifo_share );
-            tmeta->name2port_out.emplace( p.first, &tmeta->ports_out.back() );
-            auto &port( tmeta->ports_out.back() );
-            port.idx = 0;
-            for( std::size_t i( worker->clone_id ); nfifos > i; i += nclones )
-            {
-                port.fifos[ port.idx++ ] = port_fifo[ &p.second ]->at( i );
-            }
-            port.idx = 0;
-            port.functor = p.second.runtime_info.fifo_functor;
-        }
-        // preselect to avoid indexing with string
-        if( 1 == tmeta->ports_out.size() )
-        {
-            tmeta->selected_out = &tmeta->ports_out[ 0 ];
-        }
+        worker->alloc_meta =
+            new RRTaskFIFOAllocMeta( *kmeta, worker->clone_id );
     }
 
     inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
@@ -851,54 +470,6 @@ protected:
     }
 
     /**
-     * polling_worker_invalidate_outputs - invalidates all the output fifos
-     * of a polling worker.
-     * @param task - raft::PollingWorker*
-     */
-    void polling_worker_invalidate_outputs( PollingWorker *worker )
-    {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
-        for( auto &port : tmeta->ports_out )
-        {
-            for( int i( 0 ); port.nfifos > i; ++i )
-            {
-                port.fifos[ i ]->invalidate();
-                // wake up workers waiting on termination
-                port.idx = i; /* unlike push/send, where idx is already set */
-                (this)->port_wakeup_consumer( &port );
-            }
-        }
-    }
-
-    /**
-     * polling_worker_has_input_ports - if the polling worker has no valid
-     * input ports then it returns false.
-     * @params   worker - raft::PollingWorker*
-     * @return  bool   - false if no valid input ports avail
-     */
-    static bool polling_worker_has_input_ports( PollingWorker *worker )
-    {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
-        if( 0 == tmeta->ports_in.size() )
-        {
-            /* let the source polling worker loop until the stop signal */
-            return true;
-        }
-
-        for( auto &port : tmeta->ports_in )
-        {
-            for( int i( 0 ); port.nfifos > i; ++i )
-            {
-                if( ! port.fifos[ i ]->is_invalid() )
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
      * preset_fifo_consumers - this is the hook function to allow
      * AllocateFIFOCV to override and prepare its structure during the initial
      * allocation phase
@@ -909,18 +480,20 @@ protected:
     }
 
     /**
-     * port_wakeup_consumer - this is the hook function to allow
+     * wakeup_consumer - this is the hook function to allow
      * AllocateFIFOCV to override and wakeup the consumer based on its record
      */
-    virtual void port_wakeup_consumer( TaskFIFOPort *port )
+    virtual void wakeup_consumer( FIFOAllocMetaInterface *tmeta, int selected )
     {
         /* do nothing */
+        UNUSED( tmeta );
+        UNUSED( selected );
     }
 
     /**
      * keeps a list of all currently allocated FIFO objects
      */
-    std::unordered_map< const PortInfo*, std::vector< FIFO* >* > port_fifo;
+    std::unordered_set< FIFO* > allocated_fifos;
 
 }; /** end AllocateFIFO decl **/
 
@@ -941,52 +514,53 @@ public:
 
     virtual void registerConsumer( Task *task )
     {
-        assert( POLLING_WORKER == task->type );
-        auto *t( static_cast< PollingWorkerCV* >( task ) );
-        polling_worker_register_consumer( t );
+        assert( CONDVAR_WORKER == task->type );
+        auto *t( static_cast< CondVarWorker* >( task ) );
+        condvar_worker_register_consumer( t );
     }
 
 protected:
 
     virtual void preset_fifo_consumers()
     {
-        for( auto &p : port_fifo )
+        for( auto *fifo : allocated_fifos )
         {
-            for( auto *fifo : *p.second )
-            {
-                /* allocate the slot earlier to avoid resize */
-                fifo_consumers[ fifo ] = nullptr;
-            }
+            /* allocate the slot earlier to avoid resize */
+            fifo_consumers[ fifo ] = nullptr;
         }
     }
 
-    virtual void port_wakeup_consumer( TaskFIFOPort *port )
+    virtual void wakeup_consumer( FIFOAllocMetaInterface *tmeta, int selected )
     {
-        if( ! port->wakupConsumer() )
+        auto *fifo( tmeta->wakeupConsumer( selected ) );
+        if( nullptr != fifo )
         {
-            port->consumers[ port->idx ] =
-                fifo_consumers[ port->fifos[ port->idx ] ];
+            tmeta->setConsumer( selected, fifo_consumers[ fifo ] );
         }
     }
 
 private:
-    inline void polling_worker_register_consumer( PollingWorkerCV *worker )
+    inline void condvar_worker_register_consumer( CondVarWorker *worker )
     {
-        auto *tmeta( static_cast< TaskFIFOAllocMeta* >( worker->alloc_meta ) );
+        auto *tmeta( static_cast< RRTaskFIFOAllocMeta* >(
+                    worker->alloc_meta ) );
 
-        auto &input_ports( tmeta->ports_in );
-        for( auto &port : input_ports )
+        auto ninputs( tmeta->ninputs );
+        for( auto i( 0 ); ninputs > i; ++i )
         {
-            auto *fifos( port.fifos );
-            auto nfifos( port.nfifos );
-            for( int i = 0; nfifos > i; ++i )
+            auto *pi( tmeta->ports_in_info[ i ] );
+            auto *fifos( pi->runtime_info.fifos );
+            auto nfifos( pi->runtime_info.nfifos );
+            for( int j( 0 ); nfifos > j; ++j )
             {
-                fifo_consumers[ fifos[ i ] ] = worker;
+                fifo_consumers[ fifos[ j ] ] = worker;
             }
         }
+
+        tmeta->newConsumersArr();
     }
 
-    std::unordered_map< FIFO*, PollingWorkerCV* > fifo_consumers;
+    std::unordered_map< FIFO*, CondVarWorker* > fifo_consumers;
 
 }; /** end AllocateFIFOCV decl **/
 
