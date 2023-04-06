@@ -129,7 +129,8 @@ protected:
                     const auto *other_pi( my_pi->other_port );
                     burst->is_source = false;
                     burst->kernel = other_pi->my_kernel;
-                    auto *stream_in_tmp( burst->stream_out->out2in1piece() );
+                    auto *stream_in_tmp(
+                            burst->stream_out->out2in1piece( burst ) );
                     Singleton::allocate()->taskCommit( burst );
                     /* free up old stream_in/out before overwritten */
                     Singleton::allocate()->taskInit( burst );

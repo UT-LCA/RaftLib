@@ -305,6 +305,7 @@ protected:
 #else
             delete oneshot->stream_in;
 #endif
+            oneshot->stream_in = nullptr;
         }
         if( nullptr != oneshot->stream_out )
         {
@@ -313,7 +314,14 @@ protected:
 #else
             delete oneshot->stream_out;
 #endif
+            oneshot->stream_out = nullptr;
         }
+#if USE_UT
+        tcache_free( &__perthread_new_alloc_meta_pt, oneshot->alloc_meta );
+#else
+        delete oneshot->alloc_meta;
+#endif
+        oneshot->alloc_meta = nullptr;
     }
 
 #if UT_FOUND

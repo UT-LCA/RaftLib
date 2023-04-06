@@ -185,6 +185,7 @@ protected:
                     const auto *other_pi( my_pi->other_port );
                     shot_kernel( other_pi->my_kernel, oneshot->stream_out,
                                  gid );
+                    oneshot->stream_out = nullptr;
                 }
             }
             else
@@ -222,7 +223,7 @@ protected:
         tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
 
         Singleton::allocate()->taskInit( tnext );
-        tnext->stream_in = src_sd->out2in1piece();
+        tnext->stream_in = src_sd->out2in1piece( tnext );
 
         run_oneshot( tnext, gid );
     }

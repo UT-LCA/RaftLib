@@ -456,16 +456,18 @@ protected:
 #else
             delete oneshot->stream_in;
 #endif
+            oneshot->stream_in = nullptr;
         }
         /* stream_out might have been assigned to a consumer task as stream_in
          * if is1Piece() && isSingle() && isSent() */
-        if( nullptr != oneshot->stream_out && !oneshot->stream_out->isInput() )
+        if( nullptr != oneshot->stream_out )
         {
 #if USE_UT
             tcache_free( &__perthread_streaming_data_pt, oneshot->stream_out );
 #else
             delete oneshot->stream_out;
 #endif
+            oneshot->stream_out = nullptr;
         }
     }
 

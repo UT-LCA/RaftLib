@@ -356,12 +356,13 @@ public:
     /** out2in1piece - convert a streaming data of OUT_1PIECE
      * to a streaming data of IN_1PIECE, so it could be given
      * to a consumer one shot task to use */
-    StreamingData *out2in1piece()
+    StreamingData *out2in1piece( Task *new_task )
     {
         assert( isSingle() && is1Piece() );
         type = SINGLE_IN_1PIECE;
         single_store_valid = true;
         ref_ptr = &single_store;
+        task = new_task;
         return this;
     }
 
