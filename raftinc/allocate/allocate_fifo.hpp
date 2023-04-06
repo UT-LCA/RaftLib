@@ -333,14 +333,14 @@ public:
         UNUSED( is_last );
         auto *tmeta( static_cast< FIFOAllocMetaInterface* >(
                     task->alloc_meta ) );
-        while ( *selected < task->kernel->output.size() )
+        while ( (std::size_t)*selected < task->kernel->output.size() )
         {
             FIFOFunctor *functor;
             FIFO *fifo;
             tmeta->getDrainPairOut( &functor, &fifo, *selected );
             if( 0 >= fifo->size() )
             {
-                *selected++;
+                *selected = *selected + 1;
                 continue;
             }
             ref = functor->oneshot_allocate();
@@ -537,7 +537,11 @@ protected:
         auto *fifo( tmeta->wakeupConsumer( selected ) );
         if( nullptr != fifo )
         {
-            tmeta->setConsumer( selected, fifo_consumers[ fifo ] );
+            auto *worker( fifo_consumers[ fifo ] );
+            if( nullptr != worker )
+            {
+                tmeta->setConsumer( selected, worker );
+            }
         }
     }
 
@@ -547,19 +551,7 @@ private:
         auto *tmeta( static_cast< RRTaskFIFOAllocMeta* >(
                     worker->alloc_meta ) );
 
-        auto ninputs( tmeta->ninputs );
-        for( auto i( 0 ); ninputs > i; ++i )
-        {
-            auto *pi( tmeta->ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-            for( int j( 0 ); nfifos > j; ++j )
-            {
-                fifo_consumers[ fifos[ j ] ] = worker;
-            }
-        }
-
-        tmeta->newConsumersArr();
+        tmeta->consumerInit( worker, fifo_consumers );
     }
 
     std::unordered_map< FIFO*, CondVarWorker* > fifo_consumers;
