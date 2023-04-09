@@ -105,6 +105,7 @@ public:
             used = new store_map_t;
         }
         selected = 0;
+        ref_ptr = nullptr;
     }
 
     ~StreamingData()

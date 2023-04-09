@@ -79,13 +79,13 @@ public:
     }
     virtual ~ScheduleOneShot() = default;
 
-    virtual bool doesOneShot() const
+    virtual bool doesOneShot() const override
     {
         return true;
     }
 
 #if UT_FOUND
-    virtual void globalInitialize()
+    virtual void globalInitialize() override
     {
         slab_create( &oneshot_task_slab, "oneshottask",
                      sizeof( OneShotTask ), 0 );
@@ -93,14 +93,15 @@ public:
                                                   TCACHE_DEFAULT_MAG_SIZE );
     }
 
-    virtual void perthreadInitialize()
+    virtual void perthreadInitialize() override
     {
         tcache_init_perthread( oneshot_task_tcache,
                                &__perthread_oneshot_task_pt );
     }
 #endif
 
-    virtual void postcompute( Task* task, const kstatus::value_t sig_status )
+    virtual void postcompute( Task* task,
+                              const kstatus::value_t sig_status ) override
     {
         if( kstatus::stop == sig_status )
         {
@@ -110,7 +111,7 @@ public:
         }
     }
 
-    virtual void reschedule( Task* task )
+    virtual void reschedule( Task* task ) override
     {
         self_iterate( task ); /* for source kernels to start a new iteration */
         feed_consumers( task );
@@ -125,7 +126,7 @@ public:
 
 protected:
 
-    virtual void start_tasks()
+    virtual void start_tasks() override
     {
         auto &container( source_kernels );
         for( auto * const k : container )

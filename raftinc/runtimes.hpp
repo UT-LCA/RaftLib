@@ -117,6 +117,9 @@ using RuntimeNewBurst = RuntimeTemp< PartitionBasic,
 using RuntimeNewPollingSource = RuntimeTemp< PartitionBasic,
                                              AllocateNew,
                                              SchedulePollingSource >;
+using RuntimeMix = RuntimeTemp< PartitionBasic,
+                                AllocateMix,
+                                ScheduleMix >;
 
 } /** end namespace raft **/
 

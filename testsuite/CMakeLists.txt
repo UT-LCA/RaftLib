@@ -24,6 +24,9 @@ set( TESTAPPS
      fixedMatchTest
      stdlibsupport
      armqMini
+     armqMix
+     armqMixIgnoreHint0Clone
+     armqMixIgnoreHintFullQ
      #peek
      #peekrange
      allocate

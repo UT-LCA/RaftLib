@@ -121,7 +121,7 @@ public:
         add_output< T >( name );
     }
 
-    std::size_t getId()
+    std::size_t getId() const
     {
         return( kernel_id );
     }

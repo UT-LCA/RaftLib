@@ -1,7 +1,7 @@
 /**
- * schedule_burst.hpp -
+ * schedule_mix.hpp -
  * @author: Qinzhe Wu
- * @version: Mon Apr 03 10:34:00 2023
+ * @version: Fri Apr 07 15:20:00 2023
  *
  * Copyright 2023 The Regents of the University of Texas
  *
@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFT_SCHEDULE_SCHEDULE_BURST_HPP
-#define RAFT_SCHEDULE_SCHEDULE_BURST_HPP  1
+#ifndef RAFT_SCHEDULE_SCHEDULE_MIX_HPP
+#define RAFT_SCHEDULE_SCHEDULE_MIX_HPP  1
 #include <atomic>
 
 #include "raftinc/signalhandler.hpp"
@@ -31,38 +31,63 @@
 #include "raftinc/task.hpp"
 #include "raftinc/schedule/schedule_basic.hpp"
 #include "raftinc/schedule/schedule_oneshot.hpp"
+#include "raftinc/schedule/schedule_burst.hpp"
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/oneshottask.hpp"
 
 namespace raft {
 
 
-class ScheduleBurst : public ScheduleOneShot
+class ScheduleMix : public ScheduleBurst
 {
 public:
-    ScheduleBurst() : ScheduleOneShot()
+    ScheduleMix() : ScheduleBurst()
     {
     }
-    virtual ~ScheduleBurst() = default;
+    virtual ~ScheduleMix() = default;
 
-    virtual bool shouldExit( Task* task ) override
+    virtual bool shouldExit( Task* task )
     {
+        if( ONE_SHOT != task->type &&
+            ! Singleton::allocate()->taskHasInputPorts( task ) &&
+            ! Singleton::allocate()->dataInReady( task, null_port_value ) )
+        {
+            return true;
+        }
         return task->stopped;
     }
 
-    virtual void postcompute( Task* task,
-                              const kstatus::value_t sig_status ) override
+    virtual void postcompute( Task* task, const kstatus::value_t sig_status )
     {
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            auto *burst( static_cast< BurstTask* >( task ) );
-            burst->is_source = false; /* stop self_iterate() */
+            if( ONE_SHOT != task->type )
+            {
+                task->stopped = true;
+            }
+            else
+            {
+                auto *burst( static_cast< BurstTask* >( task ) );
+                burst->is_source = false; /* stop self_iterate() */
+            }
         }
     }
 
-    virtual void reschedule( Task* task ) override
+    virtual void reschedule( Task* task )
     {
+        if( ONE_SHOT != task->type )
+        {
+            auto *worker( static_cast< PollingWorker* >( task ) );
+            (this)->feed_consumers( worker );
+            if( 64 <= ++worker->poll_count )
+            {
+                worker->poll_count = 0;
+                raft::yield();
+            }
+            return;
+        }
+
         self_iterate( task ); /* for source kernels to start a new iteration */
         bool reloaded( (this)->feed_consumers( task ) );
         if( ! reloaded )
@@ -72,8 +97,9 @@ public:
         }
     }
 
-    virtual void postexit( Task* task ) override
+    virtual void postexit( Task* task )
     {
+        Singleton::allocate()->invalidateOutputs( task );
 #if USE_UT
         waitgroup_done( task->wg );
 #else
@@ -83,33 +109,44 @@ public:
 
 protected:
 
+    virtual void start_tasks() override
+    {
+        ScheduleBasic::start_tasks();
+    }
+
+    virtual int get_nclones( Kernel * const kernel ) override
+    {
+#if IGNORE_HINT_0CLONE
+        return std::max( 1, kernel->getCloneFactor() );
+#else
+        return kernel->getCloneFactor();
+#endif
+    }
+
     virtual bool feed_consumers( Task *task ) override
     {
         if( 0 == task->kernel->output.size() )
         {
             return false;
         }
-        auto *burst( static_cast< BurstTask* >( task ) );
         int64_t gid = -1;
 #if USE_QTHREAD
-        gid = burst->group_id;
+        //gid = burst->group_id;
 #endif
         PortInfo *my_pi;
         DataRef ref;
         int selected = 0;
         bool is_last = false;
+        int cnt = 0;
         while( Singleton::allocate()->schedPop(
                     task, my_pi, ref, &selected, &is_last ) )
         {
+            cnt++;
             auto *other_pi( my_pi->other_port );
-            if( ! is_last )
+            if( is_last && ONE_SHOT == task->type )
             {
-                //TODO: deal with a kernel depends on multiple producers
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             gid );
-            }
-            else
-            {
+                /* reload the BurstTask with the consumer kernel */
+                auto *burst( static_cast< BurstTask* >( task ) );
                 Singleton::allocate()->taskCommit( burst );
                 /* free up old stream_in/out before overwritten */
                 burst->is_source = false;
@@ -118,22 +155,17 @@ protected:
                 burst->stream_in->set( other_pi->my_name, ref );
                 return true;
             }
+            else
+            {
+                //TODO: deal with a kernel depends on multiple producers
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
+                             gid );
+            }
         }
         return false;
-    }
-
-    virtual OneShotTask *new_an_oneshot() override
-    {
-#if USE_UT
-        auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
-        BurstTask *oneshot( new ( task_ptr_tmp ) BurstTask() );
-#else
-        BurstTask *oneshot( new BurstTask() );
-#endif
-        return oneshot;
     }
 
 };
 
 } /** end namespace raft **/
-#endif /* END RAFT_SCHEDULE_SCHEDULE_BURST_HPP */
+#endif /* END RAFT_SCHEDULE_SCHEDULE_MIX_HPP */

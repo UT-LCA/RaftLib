@@ -213,7 +213,7 @@ protected:
         std::size_t ntasks = 0;
         for( auto * const k : container )
         {
-            ntasks += k->getCloneFactor();
+            ntasks += (this)->get_nclones( k );
         }
         waitgroup_add( &wg, ntasks );
 #endif
@@ -225,8 +225,7 @@ protected:
 
     virtual void start_polling_worker( Kernel * const kernel )
     {
-        const int nclones =
-            ( kernel->getCloneFactor() > 1 ) ? kernel->getCloneFactor() : 1;
+        const int nclones = (this)->get_nclones( kernel );
 
         std::size_t worker_id = task_id.fetch_add(
                 nclones, std::memory_order_relaxed );
@@ -244,6 +243,11 @@ protected:
         }
 
         return;
+    }
+
+    virtual int get_nclones( Kernel * const kernel )
+    {
+        return std::max( 1, kernel->getCloneFactor() );
     }
 
     /**
@@ -300,12 +304,12 @@ public:
     }
     virtual ~ScheduleCV() = default;
 
-    virtual void prepare( Task *task )
+    virtual void prepare( Task *task ) override
     {
         Singleton::allocate()->registerConsumer( task );
     }
 
-    virtual void reschedule( Task *task )
+    virtual void reschedule( Task *task ) override
     {
         auto *worker( static_cast< CondVarWorker* >( task ) );
         worker->wait();
@@ -313,7 +317,7 @@ public:
 
 protected:
 
-    virtual PollingWorker *new_a_worker()
+    virtual PollingWorker *new_a_worker() override
     {
         return new CondVarWorker();
     }

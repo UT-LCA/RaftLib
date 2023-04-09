@@ -47,7 +47,7 @@ public:
     }
     virtual ~SchedulePollingSource() = default;
 
-    virtual void reschedule( Task* task )
+    virtual void reschedule( Task* task ) override
     {
         auto *burst( static_cast< BurstTask* >( task ) );
         if( burst->is_source )

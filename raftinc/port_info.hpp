@@ -69,6 +69,21 @@ struct PortInfo4Runtime
     int nfifos;
     BufferInfo existing_buffer;
 
+    PortInfo4Runtime()
+    {
+        fifo_functor = nullptr;
+        fifos = nullptr;
+    }
+
+    ~PortInfo4Runtime()
+    {
+        if( nullptr != fifo_functor )
+        {
+            delete fifo_functor;
+            fifo_functor = nullptr;
+        }
+    }
+
     template< class T >
     void init()
     {

@@ -1,7 +1,7 @@
 /**
- * armqMini.cpp -
+ * armqMix.cpp -
  * @author: Qinzhe Wu
- * @version: Thu Mar 02 19:50:00 2023
+ * @version: Sat Apr 08 15:11:00 2023
  *
  * Copyright 2023 Regents of the University of Texas
  *
@@ -58,6 +58,33 @@ private:
 };
 
 
+class middle : public raft::test::middle< obj_t, obj_t >
+{
+public:
+    middle() : raft::test::middle< obj_t, obj_t >()
+    {
+    }
+
+    virtual ~middle() = default;
+
+    virtual raft::kstatus::value_t compute( raft::StreamingData &dataIn,
+                                            raft::StreamingData &bufOut )
+    {
+        obj_t in;
+        dataIn[ "x"_port ].pop< obj_t >( in );
+        for( int i( 0 ); 256 > i; ++i )
+        {
+            for( int j( 0 ); 256 > j; ++j )
+            {
+                in = 199 - in;
+            }
+        }
+        bufOut[ "y"_port ].push< obj_t >( in );
+        return( raft::kstatus::proceed );
+    }
+};
+
+
 class last : public raft::test::last< obj_t >
 {
 public:
@@ -99,46 +126,11 @@ int
 main()
 {
     start s;
+    middle m;
     last l;
 
     raft::DAG dag;
-    dag += s >> l;
-    std::cout << "RuntimeFIFO\n";
-    dag.exe< raft::RuntimeFIFO >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeFIFOGroup\n";
-    dag.exe< raft::RuntimeFIFOGroup >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeFIFOCV\n";
-    dag.exe< raft::RuntimeFIFOCV >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeFIFOGroupCV\n";
-    dag.exe< raft::RuntimeFIFOGroupCV >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeFIFOOneShot\n";
-    dag.exe< raft::RuntimeFIFOOneShot >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeNewOneShot\n";
-    dag.exe< raft::RuntimeNewOneShot >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeNewPollingSource\n";
-    dag.exe< raft::RuntimeNewPollingSource >();
-
-    s.reset();
-    l.reset();
-    std::cout << "RuntimeMix\n";
+    dag += s >> m >> l * 0;
     dag.exe< raft::RuntimeMix >();
 
     return( EXIT_SUCCESS );
