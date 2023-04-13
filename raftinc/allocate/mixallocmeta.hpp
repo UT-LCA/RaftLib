@@ -31,9 +31,9 @@
 #include "raftinc/streamingdata.hpp"
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/allocate/fifo.hpp"
-#include "raftinc/allocate/fifofunctor.hpp"
 #include "raftinc/allocate/ringbuffer.tcc"
 #include "raftinc/allocate/allocate_new.hpp"
+#include "raftinc/allocate/functors.hpp"
 
 namespace raft
 {
@@ -306,8 +306,8 @@ struct OneShotMixAllocMeta : public MixAllocMeta
     {
         auto *node( new BufListNode() );
         node->pi = kmeta.kfifometa.ports_out_info[ selected ];
-        auto *functor( node->pi->runtime_info.fifo_functor );
-        node->ref = functor->oneshot_allocate( ref );
+        auto *functor( node->pi->runtime_info.bullet_functor );
+        node->ref = functor->allocate( ref );
         // insert into the linked list
         node->next = outbufs.next;
         outbufs.next = node;
@@ -317,8 +317,8 @@ struct OneShotMixAllocMeta : public MixAllocMeta
     {
         auto *node( new BufListNode() );
         node->pi = kmeta.kfifometa.ports_out_info[ selected ];
-        auto *functor( node->pi->runtime_info.fifo_functor );
-        node->ref = functor->oneshot_allocate();
+        auto *functor( node->pi->runtime_info.bullet_functor );
+        node->ref = functor->allocate();
         // insert into the linked list
         node->next = outbufs.next;
         outbufs.next = node;

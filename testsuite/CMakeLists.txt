@@ -36,6 +36,7 @@ set( TESTAPPS
      allocatePopPush
      allocatePopInternal
      allocatePopInternalObject
+     bulletAllocateInternalObject
      allocatePopExternal
      lambdatest
      foreach

@@ -25,7 +25,7 @@
 #include <cstddef>
 
 #include "raftinc/allocate/fifo.hpp"
-#include "raftinc/allocate/fifofunctor.hpp"
+#include "raftinc/allocate/functors.hpp"
 #include "raftinc/allocate/ringbuffer.tcc"
 #include "raftinc/allocate/buffer/buffertypes.hpp"
 
@@ -68,11 +68,13 @@ struct PortInfo4Runtime
     FIFO **fifos;
     int nfifos;
     BufferInfo existing_buffer;
+    BulletFunctor *bullet_functor;
 
     PortInfo4Runtime()
     {
         fifo_functor = nullptr;
         fifos = nullptr;
+        bullet_functor = nullptr;
     }
 
     ~PortInfo4Runtime()
@@ -82,12 +84,18 @@ struct PortInfo4Runtime
             delete fifo_functor;
             fifo_functor = nullptr;
         }
+        if( nullptr != bullet_functor )
+        {
+            delete bullet_functor;
+            bullet_functor = nullptr;
+        }
     }
 
     template< class T >
     void init()
     {
         fifo_functor = new FIFOFunctorT< T >();
+        bullet_functor = new BulletFunctorT< T >();
     }
 };
 

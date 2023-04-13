@@ -37,7 +37,7 @@
 #include "raftinc/streamingdata.hpp"
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/allocate/fifo.hpp"
-#include "raftinc/allocate/fifofunctor.hpp"
+#include "raftinc/allocate/functors.hpp"
 
 #define ALLOC_ALIGN_WIDTH L1D_CACHE_LINE_SIZE
 
@@ -200,9 +200,9 @@ public:
     {
         UNUSED( selected );
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
-        auto *functor( tmeta->selected_out->runtime_info.fifo_functor );
+        auto *functor( tmeta->selected_out->runtime_info.bullet_functor );
         auto *node( new BufListNode() );
-        node->ref = functor->oneshot_allocate( item );
+        node->ref = functor->allocate( item );
         node->pi = tmeta->selected_out;
         // insert into the linked list
         node->next = tmeta->outbufs.next;
@@ -213,10 +213,10 @@ public:
     {
         UNUSED( selected );
         auto *tmeta( static_cast< TaskNewAllocMeta* >( task->alloc_meta ) );
-        auto *functor( tmeta->selected_out->runtime_info.fifo_functor );
+        auto *functor( tmeta->selected_out->runtime_info.bullet_functor );
         //TODO: merge the following two news into one tcache_alloc()
         auto *node( new BufListNode() );
-        node->ref = functor->oneshot_allocate();
+        node->ref = functor->allocate();
         node->pi = tmeta->selected_out;
         //FIXME: this assumes every allocate would be enventually sent
         // insert into the linked list

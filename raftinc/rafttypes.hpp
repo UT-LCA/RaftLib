@@ -23,6 +23,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <climits>
+#include <limits>
 #include <unordered_set>
 #include <string>
 

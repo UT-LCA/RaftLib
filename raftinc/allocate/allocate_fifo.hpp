@@ -330,7 +330,7 @@ public:
                 *selected = *selected + 1;
                 continue;
             }
-            ref = functor->oneshot_allocate();
+            ref = functor->bullet_allocate();
             /* NOTE: might have race condition, fifo was not empty but it got
              * popped by another oneshot task doing schedPop then blocking */
             functor->pop( fifo, ref );
@@ -341,11 +341,6 @@ public:
     }
 
 protected:
-
-    static inline FIFOFunctor* get_FIFOFunctor( const PortInfo &pi )
-    {
-        return pi.runtime_info.fifo_functor;
-    }
 
     /**
      * task_has_input_data - check each input fifos for available
@@ -428,7 +423,8 @@ protected:
         for( auto &p : output_ports )
         {
             oneshot->stream_out->set(
-                    p.first, get_FIFOFunctor( p.second )->oneshot_allocate() );
+                    p.first,
+                    p.second.runtime_info.bullet_functor->allocate() );
             /* TODO: needs to find a place to release the malloced data */
         }
     }

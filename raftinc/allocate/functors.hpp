@@ -1,9 +1,10 @@
 /**
- * fifofunctor.hpp - the typeless interfaces to interact FIFO
+ * functors.hpp - the type-oblivious interfaces to interact FIFO or
+ * one-piece data (Bullet)
  * @author: Qinzhe Wu
- * @version: Fri Mar  3 11:20:00 2023
+ * @version: Thu Apr 13 14:15:00 2023
  *
- * Copyright 2023 Qinzhe Wu
+ * Copyright 2023 The Regents of the University of Texas
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,16 +18,112 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef RAFT_ALLOCATE_FIFOFUNCTOR_HPP
-#define RAFT_ALLOCATE_FIFOFUNCTOR_HPP  1
+#ifndef RAFT_ALLOCATE_FUNCTORS_HPP
+#define RAFT_ALLOCATE_FUNCTORS_HPP  1
+
+#include <type_traits>
 
 #include "raftinc/streamingdata.hpp"
 #include "raftinc/allocate/fifo.hpp"
 #include "raftinc/allocate/ringbuffer.tcc"
 
+template < class T >
+struct class_alloc :
+    std::integral_constant< bool, std::is_class< T >::value >{};
+
+template < class T >
+using class_alloc_t = typename std::enable_if< class_alloc< T >::value >::type;
 
 namespace raft
 {
+
+class BulletFunctor
+{
+
+public:
+
+    /**
+     * BulletFunctor - default constructor for base class.
+     */
+    BulletFunctor() = default;
+
+    /**
+     * ~BulletFunctor - default destructor
+     */
+    virtual ~BulletFunctor() = default;
+
+    virtual std::size_t size() const = 0;
+
+    virtual DataRef allocate() const = 0;
+
+    virtual DataRef allocate( DataRef &data_ref ) const = 0;
+
+}; /** end BulletFunctor decl **/
+
+template< class T, class Enable = void >
+class BulletFunctorT : public BulletFunctor
+{
+
+public:
+
+    BulletFunctorT() = default;
+
+    virtual std::size_t size() const
+    {
+        return sizeof( T );
+    }
+
+    virtual DataRef allocate() const
+    {
+        DataRef ref;
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        ref.set< T >( *ptr );
+        return ref;
+    }
+
+    virtual DataRef allocate( DataRef &data_ref ) const
+    {
+        DataRef ref;
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        /* TODO: this assumes assign operator is available for T */
+        *ptr = data_ref.get< T >();
+        ref.set< T >( *ptr );
+        return ref;
+    }
+};
+
+template< class T >
+class BulletFunctorT< T, class_alloc_t< T > > : public BulletFunctor
+{
+
+public:
+
+    BulletFunctorT() = default;
+
+    virtual std::size_t size() const
+    {
+        return sizeof( T );
+    }
+
+    virtual DataRef allocate() const
+    {
+        DataRef ref;
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        new ( ptr )T(); /* TODO: this assumes plain constructor exists for T */
+        ref.set< T >( *ptr );
+        return ref;
+    }
+
+    virtual DataRef allocate( DataRef &data_ref ) const
+    {
+        DataRef ref;
+        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
+        new ( ptr )T( data_ref.get< T >() );
+        /* TODO: this assumes copy constructor exists for T */
+        ref.set< T >( *ptr );
+        return ref;
+    }
+};
 
 class FIFOFunctor
 {
@@ -68,9 +165,9 @@ public:
 
     virtual DataRef allocate( FIFO *fifo ) = 0;
 
-    virtual DataRef oneshot_allocate() = 0;
+    virtual DataRef bullet_allocate() = 0;
 
-    virtual DataRef oneshot_allocate( DataRef &data_ref ) = 0;
+    virtual DataRef bullet_allocate( DataRef &data_ref ) = 0;
 
     virtual void deallocate( FIFO *fifo )
     {
@@ -310,24 +407,14 @@ public:
         return ref;
     }
 
-    virtual DataRef oneshot_allocate()
+    virtual DataRef bullet_allocate()
     {
-        DataRef ref;
-        /* TODO: use constructor for class type */
-        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
-        ref.set< T >( *ptr );
-        return ref;
+        return bullet_functor.allocate();
     }
 
-    virtual DataRef oneshot_allocate( DataRef &data_ref )
+    virtual DataRef bullet_allocate( DataRef &data_ref )
     {
-        DataRef ref;
-        /* TODO: use constructor for class type */
-        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
-        /* TODO: this assume assign operator is available for T */
-        *ptr = data_ref.get< T >();
-        ref.set< T >( *ptr );
-        return ref;
+        return bullet_functor.allocate( data_ref );
     }
 
     //TODO: find a way to create a proper functor interface for autorelease
@@ -391,8 +478,10 @@ public:
     //virtual FIFO::autorelease< DataRef, FIFO::peekrange > peek_range(
     //        FIFO *fifo, const std::size_t n ) = 0;
 
+    BulletFunctorT< T > bullet_functor;
+
 }; /** end FIFOFunctorT decl **/
 
 } /** end namespace raft **/
 
-#endif /* END RAFT_ALLOCATE_FIFO_HPP */
+#endif /* END RAFT_ALLOCATE_FUNCTORS_HPP */
