@@ -382,7 +382,11 @@ protected:
                     worker->kernel->getAllocMeta() ) );
 
         worker->alloc_meta =
+#if RAFT_GREEDY_CVWORKER
+            new GreedyTaskFIFOAllocMeta( *kmeta, worker->clone_id );
+#else
             new RRTaskFIFOAllocMeta( *kmeta, worker->clone_id );
+#endif
     }
 
     inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
@@ -534,7 +538,11 @@ protected:
 private:
     inline void condvar_worker_register_consumer( CondVarWorker *worker )
     {
+#if RAFT_GREEDY_CVWORKER
+        auto *tmeta( static_cast< GreedyTaskFIFOAllocMeta* >(
+#else
         auto *tmeta( static_cast< RRTaskFIFOAllocMeta* >(
+#endif
                     worker->alloc_meta ) );
 
         tmeta->consumerInit( worker, fifo_consumers );

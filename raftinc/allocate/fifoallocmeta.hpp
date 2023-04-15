@@ -357,6 +357,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
     RRTaskFIFOAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
         FIFOAllocMetaInterface(),
         kmeta( meta ),
+        clone_id( rr_idx ),
         ninputs( meta.name2port_in.size() ),
         noutputs( meta.name2port_out.size() ),
         name2port_in( meta.name2port_in ),
@@ -400,6 +401,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         }
         nclones = std::max( 1, nclones );
         consumers = nullptr;
+        fifo_consumers_ptr = nullptr;
     }
 
     virtual ~RRTaskFIFOAllocMeta()
@@ -416,6 +418,8 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
 
     const KernelFIFOAllocMeta &kmeta;
 
+    const int clone_id;
+
     const int ninputs;
     const int noutputs;
 
@@ -430,6 +434,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
 
     CondVarWorker **consumers;
     /* is flattened from 2-D array, serve as the cache of fifo_consumers */
+    std::unordered_map< FIFO*, CondVarWorker* >* fifo_consumers_ptr;
 
     int nclones;
 
@@ -499,15 +504,23 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         auto idx( idxs_out[ selected << 1 ] +
                   idxs_out[ ( selected << 1 ) + 1 ] );
         // wake up the worker waiting for data
+        if( nullptr == consumers[ idx ] )
+        {
+            auto *pi( ports_out_info[ selected ] );
+            auto *fifos( pi->runtime_info.fifos );
+            auto *fifo( fifos[ idxs_out[ selected << 1 ] ] );
+            auto iter( fifo_consumers_ptr->find( fifo ) );
+            if( fifo_consumers_ptr->end() != iter &&
+                nullptr != iter->second )
+            {
+                consumers[ idx ] = iter->second; /* cache the lookup results */
+            }
+        }
         if( nullptr != consumers[ idx ] )
         {
             consumers[ idx ]->wakeup();
-            return nullptr;
         }
-        auto *pi( ports_out_info[ selected ] );
-        auto *fifos( pi->runtime_info.fifos );
-        return fifos[ idxs_out[ selected << 1 ] ];
-        /* let AllocateFIFOCV knows that it should look up fifo_consumers */
+        return nullptr;
     }
 
     virtual void setConsumer( int selected, CondVarWorker *worker )
@@ -539,6 +552,21 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
                     {
                         consumers[ idx ]->wakeup();
                     }
+                    else
+                    {
+                        /* might have never pushed on this fifo so the
+                         * consumer is not cached yet, fall back to lookup
+                         * the fifo_consumers map to make sure not missing
+                         * a waiting consumer
+                         */
+                        auto iter =
+                            fifo_consumers_ptr->find( fifos[ idx_tmp ] );
+                        if( fifo_consumers_ptr->end() != iter &&
+                            nullptr != iter->second )
+                        {
+                            iter->second->wakeup();
+                        }
+                    }
                 }
                 idx_tmp += nclones;
                 idx_tmp %= nfifos;
@@ -558,16 +586,13 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
             auto *pi( ports_in_info[ i ] );
             auto *fifos( pi->runtime_info.fifos );
             auto nfifos( pi->runtime_info.nfifos );
-            auto idx_tmp( idxs_in[ i ] );
-            do
+            for( int idx( clone_id ); nfifos > idx; idx += nclones )
             {
-                if( ! fifos[ idx_tmp ]->is_invalid() )
+                if( ! fifos[ idx ]->is_invalid() )
                 {
                     return true;
                 }
-                idx_tmp += nclones;
-                idx_tmp %= nfifos;
-            } while( idx_tmp != idxs_in[ i ] );
+            }
         }
         return false;
     }
@@ -627,13 +652,10 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
             auto *pi( ports_in_info[ i ] );
             auto *fifos( pi->runtime_info.fifos );
             auto nfifos( pi->runtime_info.nfifos );
-            auto idx_tmp( idxs_in[ i ] );
-            do
+            for( auto idx( clone_id ); nfifos > idx; idx += nclones )
             {
-                fifo_consumers[ fifos[ idx_tmp ] ] = consumer;
-                idx_tmp += nclones;
-                idx_tmp %= nfifos;
-            } while( idx_tmp != idxs_in[ i ] );
+                fifo_consumers[ fifos[ idx ] ] = consumer;
+            }
         }
 
         if( 0 == noutputs )
@@ -644,6 +666,100 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         auto noutfifos( idxs_out[ ( noutputs << 1 ) + 1 ] +
                         last_port->runtime_info.nfifos );
         consumers = new CondVarWorker*[ noutfifos ]();
+        fifo_consumers_ptr = &fifo_consumers;
+    }
+};
+
+/* GreedyTaskFIFOAllocMeta - used by CondVarWorker having multiple FIFOs of an
+ * port and would iterate in the greedy manner.
+ */
+struct GreedyTaskFIFOAllocMeta : public RRTaskFIFOAllocMeta
+{
+    GreedyTaskFIFOAllocMeta( const KernelFIFOAllocMeta &meta, int idx ) :
+        RRTaskFIFOAllocMeta( meta, idx )
+    {
+    }
+
+    virtual ~GreedyTaskFIFOAllocMeta() = default;
+
+    virtual void getPairIn( FIFOFunctor *&functor,
+                            FIFO *&fifo,
+                            int selected ) const
+    {
+        auto *pi( ports_in_info[ selected ] );
+        functor = pi->runtime_info.fifo_functor;
+        auto *fifos( pi->runtime_info.fifos );
+        auto nfifos( pi->runtime_info.nfifos );
+        for( auto idx( clone_id ); nfifos > idx; idx += nclones )
+        {
+            const auto size( fifos[ idx ]->size() );
+            if( 0 < size )
+            {
+                fifo = fifos[ idx ];
+                return;
+            }
+        }
+        fifo = fifos[ 0 ];
+    }
+
+    virtual bool getPairOut( FIFOFunctor *&functor,
+                             FIFO *&fifo,
+                             int selected,
+                             bool is_oneshot = false ) const
+    {
+        UNUSED( is_oneshot );
+        auto *pi( ports_out_info[ selected ] );
+        functor = pi->runtime_info.fifo_functor;
+        auto *fifos( pi->runtime_info.fifos );
+        auto nfifos( pi->runtime_info.nfifos );
+        for( auto idx( clone_id ); nfifos > idx; idx += nclones )
+        {
+            if( fifos[ idx ]->space_avail() )
+            {
+                fifo = fifos[ idx ];
+                idxs_out[ selected << 1 ] = idx;
+                return true;
+            }
+        }
+        fifo = fifos[ 0 ];
+        return true;
+    }
+
+    virtual void nextFIFO( int selected )
+    {
+        UNUSED( selected );
+    }
+
+    virtual bool hasInputData( const port_key_t &name )
+    {
+        if( 0 == ninputs )
+        {
+            /** only output ports, keep calling compute() till exits **/
+            return true ;
+        }
+
+        int port_beg = 0, port_end = ninputs;
+        if( null_port_value != name )
+        {
+            port_beg = name2port_in.at( name );
+            port_end = port_beg + 1;
+        }
+
+        for( int i( port_beg ); port_end > i; ++i )
+        {
+            auto *pi( ports_in_info[ i ] );
+            auto *fifos( pi->runtime_info.fifos );
+            auto nfifos( pi->runtime_info.nfifos );
+            for( int idx( clone_id ); nfifos > idx; idx += nclones )
+            {
+                const auto size( fifos[ idx ]->size() );
+                if( 0 < size )
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 };
 
