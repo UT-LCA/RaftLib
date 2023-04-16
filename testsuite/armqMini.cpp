@@ -141,5 +141,10 @@ main()
     std::cout << "RuntimeMix\n";
     dag.exe< raft::RuntimeMix >();
 
+    s.reset();
+    l.reset();
+    std::cout << "RuntimeMixCV\n";
+    dag.exe< raft::RuntimeMixCV >();
+
     return( EXIT_SUCCESS );
 }

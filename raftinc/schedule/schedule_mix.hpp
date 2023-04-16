@@ -137,11 +137,12 @@ protected:
         DataRef ref;
         int selected = 0;
         bool is_last = false;
-        int cnt = 0;
         while( Singleton::allocate()->schedPop(
                     task, my_pi, ref, &selected, &is_last ) )
         {
-            cnt++;
+#if IGNORE_HINT_0CLONE && IGNORE_HINT_FULLQ
+            BUG(); /* when both hints ignored, should never spawn OneShot */
+#endif
             auto *other_pi( my_pi->other_port );
             if( is_last && ONE_SHOT == task->type )
             {
@@ -163,6 +164,54 @@ protected:
             }
         }
         return false;
+    }
+
+};
+
+/**
+ * ScheduleMixCV - a special scheduler that is almost identical to
+ * ScheduleMix in most part, except this one exploit the producer-consumer
+ * relationship in DAG topology to accurately schedule the tasks getting
+ * data ready to make progress.
+ * Note: should be used together with AllocateMixCV.
+ */
+class ScheduleMixCV : public ScheduleMix
+{
+public:
+    ScheduleMixCV() : ScheduleMix()
+    {
+    }
+    virtual ~ScheduleMixCV() = default;
+
+    virtual void prepare( Task *task ) override
+    {
+        Singleton::allocate()->registerConsumer( task );
+    }
+
+    virtual void reschedule( Task *task ) override
+    {
+        if( ONE_SHOT != task->type )
+        {
+            auto *worker( static_cast< CondVarWorker* >( task ) );
+            (this)->feed_consumers( worker );
+            worker->wait();
+            return;
+        }
+
+        self_iterate( task ); /* for source kernels to start a new iteration */
+        bool reloaded( (this)->feed_consumers( task ) );
+        if( ! reloaded )
+        {
+            Singleton::allocate()->taskCommit( task );
+            task->stopped = true;
+        }
+    }
+
+protected:
+
+    virtual PollingWorker *new_a_worker() override
+    {
+        return new CondVarWorker();
     }
 
 };

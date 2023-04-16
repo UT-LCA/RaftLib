@@ -120,6 +120,9 @@ using RuntimeNewPollingSource = RuntimeTemp< PartitionBasic,
 using RuntimeMix = RuntimeTemp< PartitionBasic,
                                 AllocateMix,
                                 ScheduleMix >;
+using RuntimeMixCV = RuntimeTemp< PartitionBasic,
+                                  AllocateMixCV,
+                                  ScheduleMixCV >;
 
 } /** end namespace raft **/
 

@@ -123,6 +123,10 @@ public:
             k->setAllocMeta( new KernelMixAllocMeta( k ) );
         }
 
+        /* preset consumers for each fifo to be nullptr, this is really just the
+         * hook to let AllocateFIFOCV plug into the initial allocation phase */
+        (this)->preset_fifo_consumers();
+
         (this)->ready = true;
         return dag;
     }
@@ -171,15 +175,16 @@ public:
 
     virtual void taskInit( Task *task, bool alloc_input )
     {
-        if( POLLING_WORKER == task->type )
-        {
-            auto *t( static_cast< PollingWorker* >( task ) );
-            polling_worker_init( t );
-        }
-        else if( ONE_SHOT == task->type )
+        if( ONE_SHOT == task->type )
         {
             auto *t( static_cast< OneShotTask* >( task ) );
             oneshot_init( t, alloc_input );
+        }
+        else /* if( POLLING_WORKER == task->type ||
+                    CONDVAR_WORKER == task->type ) */
+        {
+            auto *t( static_cast< PollingWorker* >( task ) );
+            polling_worker_init( t );
         }
     }
 
@@ -415,6 +420,16 @@ protected:
     }
 
     /**
+     * preset_fifo_consumers - this is the hook function to allow
+     * AllocateFIFOCV to override and prepare its structure during the initial
+     * allocation phase
+     */
+    virtual void preset_fifo_consumers()
+    {
+        /* do nothing */
+    }
+
+    /**
      * wakeup_consumer -
      */
     virtual void wakeup_consumer( MixAllocMeta *tmeta, int selected )
@@ -436,6 +451,65 @@ protected:
 #endif
 
 }; /** end AllocateMix decl **/
+
+/**
+ * AllocateMixCV - a special allocate that is almost identical to the basic
+ * Mix allocator (i.e., AllocateMix) in most part, except this one implements
+ * the interface to register and wakeup FIFO consumers.
+ * Note: If not used with ScheduleMixCV, it should does everything the same as
+ * AllocateMix.
+ */
+class AllocateMixCV : public AllocateMix
+{
+public:
+
+    AllocateMixCV() : AllocateMix() {}
+
+    virtual ~AllocateMixCV() = default;
+
+    virtual void registerConsumer( Task *task )
+    {
+        assert( CONDVAR_WORKER == task->type );
+        auto *t( static_cast< CondVarWorker* >( task ) );
+        auto *tmeta( static_cast< RRWorkerMixAllocMeta* >(
+                    task->alloc_meta ) );
+
+        tmeta->consumerInit( t, fifo_consumers );
+    }
+
+protected:
+
+    virtual void preset_fifo_consumers()
+    {
+        for( auto *fifos : allocated_fifos )
+        {
+            int idx = 0;
+            while( nullptr != fifos[ idx ] )
+            {
+                /* allocate the slot earlier to avoid resize */
+                fifo_consumers[ fifos[ idx++ ] ] = nullptr;
+            }
+        }
+    }
+
+    virtual void wakeup_consumer( MixAllocMeta *tmeta, int selected )
+    {
+        auto *fifo( tmeta->wakeupConsumer( selected ) );
+        if( nullptr != fifo )
+        {
+            auto *worker( fifo_consumers[ fifo ] );
+            if( nullptr != worker )
+            {
+                tmeta->setConsumer( selected, worker );
+            }
+        }
+    }
+
+private:
+
+    std::unordered_map< FIFO*, CondVarWorker* > fifo_consumers;
+
+}; /** end AllocateMixCV decl **/
 
 
 } /** end namespace raft **/

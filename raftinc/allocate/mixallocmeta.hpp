@@ -346,7 +346,8 @@ struct OneShotMixAllocMeta : public MixAllocMeta
 struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
 {
     RRWorkerMixAllocMeta( const KernelMixAllocMeta &meta, int rr_idx ) :
-        OneShotMixAllocMeta( meta )
+        OneShotMixAllocMeta( meta ),
+        noutputs( meta.kfifometa.name2port_out.size() )
     {
         auto ninputs( kmeta.kfifometa.name2port_in.size() );
         if( 0 < ninputs )
@@ -364,12 +365,16 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
             idxs_in = nullptr;
         }
 
-        auto noutputs( kmeta.kfifometa.name2port_out.size() );
         if( 0 < noutputs )
         {
-            idxs_out = new int[ noutputs ];
+            auto *ports_out_info( kmeta.kfifometa.ports_out_info );
+            idxs_out = new int[ noutputs << 1 ];
+            idxs_out[ noutputs - 1 ] = 0;
             for( std::size_t i( 0 ); noutputs > i; ++i )
             {
+                auto nfifos( ports_out_info[ i ]->runtime_info.nfifos );
+                idxs_out[ i + noutputs ] =
+                    idxs_out[ i + noutputs - 1 ] + nfifos;
                 idxs_out[ i ] = rr_idx;
             }
             auto *pi( kmeta.kfifometa.ports_out_info[ 0 ] );
@@ -382,6 +387,8 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
 #if IGNORE_HINT_0CLONE
         nclones = std::max( 1, nclones );
 #endif
+        consumers = nullptr;
+        fifo_consumers_ptr = nullptr;
     }
 
     virtual ~RRWorkerMixAllocMeta()
@@ -396,9 +403,14 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
         }
     }
 
+    const std::size_t noutputs;
     int *idxs_in;
     int *idxs_out;
     int nclones;
+
+    CondVarWorker **consumers;
+    /* is flattened from 2-D array, serve as the cache of fifo_consumers */
+    std::unordered_map< FIFO*, CondVarWorker* >* fifo_consumers_ptr;
 
     virtual void getPairIn( FIFOFunctor *&functor,
                             FIFO *&fifo,
@@ -447,9 +459,39 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
         idxs_out[ selected ] %= nfifos;
     }
 
+    virtual FIFO *wakeupConsumer( int selected ) const
+    {
+        auto idx( idxs_out[ selected ] +
+                  idxs_out[ selected + noutputs ] );
+        // wake up the worker waiting for data
+        if( nullptr == consumers[ idx ] )
+        {
+            auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
+            auto *fifos( pi->runtime_info.fifos );
+            auto *fifo( fifos[ idxs_out[ selected ] ] );
+            auto iter( fifo_consumers_ptr->find( fifo ) );
+            if( fifo_consumers_ptr->end() != iter &&
+                nullptr != iter->second )
+            {
+                consumers[ idx ] = iter->second; /* cache the lookup results */
+            }
+        }
+        if( nullptr != consumers[ idx ] )
+        {
+            consumers[ idx ]->wakeup();
+        }
+        return nullptr;
+    }
+
+    virtual void setConsumer( int selected, CondVarWorker *worker )
+    {
+        auto idx( idxs_out[ selected ] +
+                  idxs_out[ selected + noutputs ] );
+        consumers[ idx ] = worker;
+    }
+
     virtual void invalidateOutputs() const override
     {
-        auto noutputs( kmeta.kfifometa.name2port_out.size() );
         if( 0 == noutputs )
         {
             return;
@@ -470,6 +512,29 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
             do
             {
                 fifos[ idx_tmp ]->invalidate();
+                if( nullptr != consumers )
+                {
+                    auto idx( idx_tmp + idxs_out[ i + noutputs ] );
+                    if( nullptr != consumers[ idx ] )
+                    {
+                        consumers[ idx ]->wakeup();
+                    }
+                    else
+                    {
+                        /* might have never pushed on this fifo so the
+                         * consumer is not cached yet, fall back to lookup
+                         * the fifo_consumers map to make sure not missing
+                         * a waiting consumer
+                         */
+                        auto iter =
+                            fifo_consumers_ptr->find( fifos[ idx_tmp ] );
+                        if( fifo_consumers_ptr->end() != iter &&
+                            nullptr != iter->second )
+                        {
+                            iter->second->wakeup();
+                        }
+                    }
+                }
                 idx_tmp += nclones;
                 idx_tmp %= nfifos;
             } while( idx_tmp != idxs_out[ i ] );
@@ -543,6 +608,38 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
     virtual bool isStatic() const override
     {
         return false;
+    }
+
+    /* consumerInit - allocate the consumers array, and also populate the
+     * fifo_consumers map for AllocateMixCV
+     * @param consumer - CondVarWorker*
+     * @param fifo_consumers - std::unordered_map< FIFO*, CondVarWorker* > &
+     */
+    void consumerInit( CondVarWorker* consumer,
+                       std::unordered_map< FIFO*,
+                                           CondVarWorker* > &fifo_consumers )
+    {
+        auto ninputs( kmeta.kfifometa.name2port_in.size() );
+        for( std::size_t i( 0 ); ninputs > i; ++i )
+        {
+            auto *pi( kmeta.kfifometa.ports_in_info[ i ] );
+            auto *fifos( pi->runtime_info.fifos );
+            auto nfifos( pi->runtime_info.nfifos );
+            for( auto idx( consumer->clone_id ); nfifos > idx; idx += nclones )
+            {
+                fifo_consumers[ fifos[ idx ] ] = consumer;
+            }
+        }
+
+        if( 0 == noutputs )
+        {
+            return;
+        }
+        auto *last_port( kmeta.kfifometa.ports_out_info[ noutputs - 1 ] );
+        auto noutfifos( idxs_out[ ( noutputs << 1 ) - 1 ] +
+                        last_port->runtime_info.nfifos );
+        consumers = new CondVarWorker*[ noutfifos ]();
+        fifo_consumers_ptr = &fifo_consumers;
     }
 };
 
