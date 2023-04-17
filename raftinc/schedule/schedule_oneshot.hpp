@@ -238,12 +238,7 @@ protected:
         tnext->is_source = false;
         tnext->kernel = kernel;
 
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
         tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
-        tasks_mutex.unlock();
 
         Singleton::allocate()->taskInit( tnext, true );
         tnext->stream_in->set( dst_name, ref );

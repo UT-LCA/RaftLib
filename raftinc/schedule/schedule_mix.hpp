@@ -79,11 +79,13 @@ public:
         if( ONE_SHOT != task->type )
         {
             auto *worker( static_cast< PollingWorker* >( task ) );
-            (this)->feed_consumers( worker );
-            if( 64 <= ++worker->poll_count )
+            if( ! (this)->feed_consumers( worker ) )
             {
-                worker->poll_count = 0;
-                raft::yield();
+                if( 64 <= ++worker->poll_count )
+                {
+                    worker->poll_count = 0;
+                    raft::yield();
+                }
             }
             return;
         }
@@ -144,17 +146,29 @@ protected:
             BUG(); /* when both hints ignored, should never spawn OneShot */
 #endif
             auto *other_pi( my_pi->other_port );
-            if( is_last && ONE_SHOT == task->type )
+            if( is_last )
             {
-                /* reload the BurstTask with the consumer kernel */
-                auto *burst( static_cast< BurstTask* >( task ) );
-                Singleton::allocate()->taskCommit( burst );
-                /* free up old stream_in/out before overwritten */
-                burst->is_source = false;
-                burst->kernel = other_pi->my_kernel;
-                Singleton::allocate()->taskInit( burst, true );
-                burst->stream_in->set( other_pi->my_name, ref );
+                if( ONE_SHOT == task->type )
+                {
+                    /* reload the BurstTask with the consumer kernel */
+                    auto *burst( static_cast< BurstTask* >( task ) );
+                    Singleton::allocate()->taskCommit( burst );
+                    /* free up old stream_in/out before overwritten */
+                    burst->is_source = false;
+                    burst->kernel = other_pi->my_kernel;
+                    Singleton::allocate()->taskInit( burst, true );
+                    burst->stream_in->set( other_pi->my_name, ref );
+                    return true;
+                }
+#if FEED_CONSUMER_SHOT_DIRECT
+                /* POLLING_WORKER/CONDVAR_WORKER, jump to new task directly */
+                shot_direct( other_pi, ref, gid );
                 return true;
+#else
+                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
+                             gid );
+                return false;
+#endif
             }
             else
             {
@@ -164,6 +178,49 @@ protected:
             }
         }
         return false;
+    }
+
+    void shot_direct( const PortInfo *other_pi,
+                      DataRef &ref,
+                      int64_t gid )
+    {
+        auto *tnext( (this)->new_an_oneshot() );
+        tnext->is_source = false;
+        tnext->kernel = other_pi->my_kernel;
+
+        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
+
+        Singleton::allocate()->taskInit( tnext, true );
+        tnext->stream_in->set( other_pi->my_name, ref );
+
+        run_oneshot_direct( tnext, gid );
+    }
+
+    void run_oneshot_direct( OneShotTask *oneshot, int64_t gid )
+    {
+        UNUSED( gid );
+#if USE_UT
+        waitgroup_add( &wg, 1 );
+        oneshot->wg = &wg;
+        rt::Spawn( [ oneshot ]() {
+                oneshot->exe();
+                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
+                   /* swap = */ true );
+#else
+#if USE_QTHREAD
+        oneshot->group_id = gid;
+#endif
+        auto *tnode( new OneShotListNode( oneshot ) );
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        /* insert into tasks linked list */
+        tnode->next = tasks->next;
+        tasks->next = tnode;
+        /** we got here, unlock **/
+        tasks_mutex.unlock();
+#endif
     }
 
 };
@@ -193,8 +250,10 @@ public:
         if( ONE_SHOT != task->type )
         {
             auto *worker( static_cast< CondVarWorker* >( task ) );
-            (this)->feed_consumers( worker );
-            worker->wait();
+            if( ! (this)->feed_consumers( worker ) )
+            {
+                worker->wait();
+            }
             return;
         }
 
