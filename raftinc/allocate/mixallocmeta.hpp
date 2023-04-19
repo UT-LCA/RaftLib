@@ -38,8 +38,31 @@
 namespace raft
 {
 
-struct MixAllocMetaInterface : public FIFOAllocMetaInterface
+struct MixAllocMeta : public TaskAllocMeta
 {
+    MixAllocMeta() : TaskAllocMeta() {}
+    virtual ~MixAllocMeta() = default;
+
+    /* Interfaces from FIFOAllocMeta */
+    virtual int selectIn( const port_key_t &name ) = 0;
+    virtual int selectOut( const port_key_t &name ) = 0;
+    virtual void getPairIn( FIFOFunctor *&functor,
+                            FIFO *&fifo,
+                            int selected ) const = 0;
+    virtual bool getPairOut( FIFOFunctor *&functor,
+                             FIFO *&fifo,
+                             int selected,
+                             bool is_oneshot = false ) = 0;
+    virtual void nextFIFO( int selected ) = 0;
+    virtual FIFO *wakeupConsumer( int selected ) const = 0;
+    virtual void setConsumer( int selected, CondVarWorker *worker ) = 0;
+    virtual void invalidateOutputs() const = 0;
+    virtual bool hasValidInput() const = 0;
+    virtual bool hasInputData( const port_key_t &name ) = 0;
+    virtual bool isStatic() const = 0;
+
+    /* Extended interfaces */
+
     /* pushOutBuf - append data to outbufs list
      * @param ref - DataRef &
      * @param selected - int
@@ -66,13 +89,6 @@ struct MixAllocMetaInterface : public FIFOAllocMetaInterface
 
 };
 
-struct MixAllocMeta :
-    public TaskAllocMeta, public virtual MixAllocMetaInterface
-{
-    MixAllocMeta() : TaskAllocMeta() {}
-    virtual ~MixAllocMeta() = default;
-};
-
 /* KernelMixAllocMeta - Hold all read-only data for a kernel,
  * might be assigned to a task if no multiple fifos on any of the port
  */
@@ -86,12 +102,12 @@ struct KernelMixAllocMeta : public MixAllocMeta
 
     KernelFIFOAllocMeta kfifometa;
 
-    virtual int selectIn( const port_key_t &name ) const
+    virtual int selectIn( const port_key_t &name )
     {
         return kfifometa.selectIn( name );
     }
 
-    virtual int selectOut( const port_key_t &name ) const
+    virtual int selectOut( const port_key_t &name )
     {
         return kfifometa.selectOut( name );
     }
@@ -116,7 +132,7 @@ struct KernelMixAllocMeta : public MixAllocMeta
     virtual bool getPairOut( FIFOFunctor *&functor,
                              FIFO *&fifo,
                              int selected,
-                             bool is_oneshot = false ) const
+                             bool is_oneshot = false )
     {
         UNUSED( is_oneshot );
         auto *pi( kfifometa.ports_out_info[ selected ] );
@@ -138,13 +154,6 @@ struct KernelMixAllocMeta : public MixAllocMeta
 #endif
         functor = pi->runtime_info.fifo_functor;
         return true;
-    }
-
-    virtual void getDrainPairOut( FIFOFunctor *&functor,
-                                  FIFO *&fifo,
-                                  int selected ) const
-    {
-        kfifometa.getDrainPairOut( functor, fifo, selected );
     }
 
     virtual void nextFIFO( int selected )
@@ -207,21 +216,21 @@ struct KernelMixAllocMeta : public MixAllocMeta
 
 struct OneShotMixAllocMeta : public MixAllocMeta
 {
-    OneShotMixAllocMeta( const KernelMixAllocMeta & meta ) :
-        MixAllocMetaInterface(), kmeta( meta )
+    OneShotMixAllocMeta( KernelMixAllocMeta & meta ) :
+        MixAllocMeta(), kmeta( meta )
     {
     }
 
     virtual ~OneShotMixAllocMeta() = default;
 
-    const KernelMixAllocMeta &kmeta;
+    KernelMixAllocMeta &kmeta;
 
-    virtual int selectIn( const port_key_t &name ) const
+    virtual int selectIn( const port_key_t &name )
     {
         return kmeta.selectIn( name );
     }
 
-    virtual int selectOut( const port_key_t &name ) const
+    virtual int selectOut( const port_key_t &name )
     {
         return kmeta.selectOut( name );
     }
@@ -246,22 +255,13 @@ struct OneShotMixAllocMeta : public MixAllocMeta
     virtual bool getPairOut( FIFOFunctor *&functor,
                              FIFO *&fifo,
                              int selected,
-                             bool is_oneshot = false ) const
+                             bool is_oneshot = false )
     {
         UNUSED( functor );
         UNUSED( fifo );
         UNUSED( selected );
         UNUSED( is_oneshot );
         return false; /* OneShotMixAllocMeta used by OneShotTask only */
-    }
-
-    virtual void getDrainPairOut( FIFOFunctor *&functor,
-                                  FIFO *&fifo,
-                                  int selected ) const
-    {
-        UNUSED( functor );
-        UNUSED( fifo );
-        UNUSED( selected );
     }
 
     virtual void nextFIFO( int selected )
@@ -345,100 +345,48 @@ struct OneShotMixAllocMeta : public MixAllocMeta
 
 struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
 {
-    RRWorkerMixAllocMeta( const KernelMixAllocMeta &meta, int rr_idx ) :
-        OneShotMixAllocMeta( meta ),
-        noutputs( meta.kfifometa.name2port_out.size() )
+    RRWorkerMixAllocMeta( KernelMixAllocMeta &meta, int rr_idx ) :
+        OneShotMixAllocMeta( meta ), rrmeta( meta.kfifometa, rr_idx )
     {
-        auto ninputs( kmeta.kfifometa.name2port_in.size() );
-        if( 0 < ninputs )
-        {
-            idxs_in = new int[ ninputs ];
-            for( std::size_t i( 0 ); ninputs > i; ++i )
-            {
-                idxs_in[ i ] = rr_idx;
-            }
-            auto *pi( kmeta.kfifometa.ports_in_info[ 0 ] );
-            nclones = pi->my_kernel->getCloneFactor();
-        }
-        else
-        {
-            idxs_in = nullptr;
-        }
-
-        if( 0 < noutputs )
-        {
-            auto *ports_out_info( kmeta.kfifometa.ports_out_info );
-            idxs_out = new int[ noutputs << 1 ];
-            idxs_out[ noutputs - 1 ] = 0;
-            for( std::size_t i( 0 ); noutputs > i; ++i )
-            {
-                auto nfifos( ports_out_info[ i ]->runtime_info.nfifos );
-                idxs_out[ i + noutputs ] =
-                    idxs_out[ i + noutputs - 1 ] + nfifos;
-                idxs_out[ i ] = rr_idx;
-            }
-            auto *pi( kmeta.kfifometa.ports_out_info[ 0 ] );
-            nclones = pi->my_kernel->getCloneFactor();
-        }
-        else
-        {
-            idxs_out = nullptr;
-        }
-#if IGNORE_HINT_0CLONE
-        nclones = std::max( 1, nclones );
-#endif
-        consumers = nullptr;
-        fifo_consumers_ptr = nullptr;
     }
 
-    virtual ~RRWorkerMixAllocMeta()
+    virtual ~RRWorkerMixAllocMeta() = default;
+
+    RRTaskFIFOAllocMeta rrmeta;
+
+    virtual int selectIn( const port_key_t &name )
     {
-        if( nullptr != idxs_in )
-        {
-            delete[] idxs_in;
-        }
-        if( nullptr != idxs_out )
-        {
-            delete[] idxs_out;
-        }
+        return rrmeta.selectIn( name );
     }
 
-    const std::size_t noutputs;
-    int *idxs_in;
-    int *idxs_out;
-    int nclones;
-
-    CondVarWorker **consumers;
-    /* is flattened from 2-D array, serve as the cache of fifo_consumers */
-    std::unordered_map< FIFO*, CondVarWorker* >* fifo_consumers_ptr;
+    virtual int selectOut( const port_key_t &name )
+    {
+        return rrmeta.selectOut( name );
+    }
 
     virtual void getPairIn( FIFOFunctor *&functor,
                             FIFO *&fifo,
                             int selected ) const override
     {
-        auto *pi( kmeta.kfifometa.ports_in_info[ selected ] );
-        auto fifo_idx( idxs_in[ selected ] );
-        functor = pi->runtime_info.fifo_functor;
-        fifo = pi->runtime_info.fifos[ fifo_idx ];
+        rrmeta.getPairIn( functor, fifo, selected );
     }
 
     virtual bool getPairOut( FIFOFunctor *&functor,
                              FIFO *&fifo,
                              int selected,
-                             bool is_oneshot = false ) const override
+                             bool is_oneshot = false ) override
     {
         UNUSED( is_oneshot ); /* RRWorkerMixAllocMeta is not for OneShotTask */
-        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
 #if IGNORE_HINT_0CLONE
 #else
+        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
         if( 0 == pi->runtime_info.nfifos )
         {
             return false;
             /* switch to OneShot since kernel has zero polling worker */
         }
 #endif
-        auto fifo_idx( idxs_out[ selected ] );
-        fifo = pi->runtime_info.fifos[ fifo_idx ];
+        rrmeta.getPairOut( functor, fifo, selected, is_oneshot );
 #if IGNORE_HINT_FULLQ
 #else
         if( 0 == fifo->space_avail() )
@@ -446,163 +394,53 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
             return false;
         }
 #endif
-        functor = pi->runtime_info.fifo_functor;
         return true;
     }
 
     virtual void nextFIFO( int selected ) override
     {
-        /* to round-robin output FIFOs of the selected port */
-        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
-        auto nfifos( pi->runtime_info.nfifos );
-        idxs_out[ selected ] += nclones;
-        idxs_out[ selected ] %= nfifos;
+        rrmeta.nextFIFO( selected );
     }
 
     virtual FIFO *wakeupConsumer( int selected ) const
     {
-        auto idx( idxs_out[ selected ] +
-                  idxs_out[ selected + noutputs ] );
-        // wake up the worker waiting for data
-        if( nullptr == consumers[ idx ] )
+#if IGNORE_HINT_0CLONE
+#else
+        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
+        if( 0 == pi->runtime_info.nfifos )
         {
-            auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto *fifo( fifos[ idxs_out[ selected ] ] );
-            auto iter( fifo_consumers_ptr->find( fifo ) );
-            if( fifo_consumers_ptr->end() != iter &&
-                nullptr != iter->second )
-            {
-                consumers[ idx ] = iter->second; /* cache the lookup results */
-            }
+            return nullptr;
         }
-        if( nullptr != consumers[ idx ] )
-        {
-            consumers[ idx ]->wakeup();
-        }
-        return nullptr;
+#endif
+        return rrmeta.wakeupConsumer( selected );
     }
 
     virtual void setConsumer( int selected, CondVarWorker *worker )
     {
-        auto idx( idxs_out[ selected ] +
-                  idxs_out[ selected + noutputs ] );
-        consumers[ idx ] = worker;
+#if IGNORE_HINT_0CLONE
+#else
+        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
+        if( 0 == pi->runtime_info.nfifos )
+        {
+            return;
+        }
+#endif
+        rrmeta.setConsumer( selected, worker );
     }
 
     virtual void invalidateOutputs() const override
     {
-        if( 0 == noutputs )
-        {
-            return;
-        }
-        for( std::size_t i( 0 ); noutputs > i; ++i )
-        {
-            auto *pi( kmeta.kfifometa.ports_out_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-#if IGNORE_HINT_0CLONE
-#else
-            if( 0 == nfifos )
-            {
-                continue;
-            }
-#endif
-            auto idx_tmp( idxs_out[ i ] );
-            do
-            {
-                fifos[ idx_tmp ]->invalidate();
-                if( nullptr != consumers )
-                {
-                    auto idx( idx_tmp + idxs_out[ i + noutputs ] );
-                    if( nullptr != consumers[ idx ] )
-                    {
-                        consumers[ idx ]->wakeup();
-                    }
-                    else
-                    {
-                        /* might have never pushed on this fifo so the
-                         * consumer is not cached yet, fall back to lookup
-                         * the fifo_consumers map to make sure not missing
-                         * a waiting consumer
-                         */
-                        auto iter =
-                            fifo_consumers_ptr->find( fifos[ idx_tmp ] );
-                        if( fifo_consumers_ptr->end() != iter &&
-                            nullptr != iter->second )
-                        {
-                            iter->second->wakeup();
-                        }
-                    }
-                }
-                idx_tmp += nclones;
-                idx_tmp %= nfifos;
-            } while( idx_tmp != idxs_out[ i ] );
-        }
+        rrmeta.invalidateOutputs();
     }
 
     virtual bool hasValidInput() const override
     {
-        auto ninputs( kmeta.kfifometa.name2port_in.size() );
-        if( 0 == ninputs )
-        {
-            /* let the source polling worker loop until the stop signal */
-            return true;
-        }
-        for( std::size_t i( 0 ); ninputs > i; ++i )
-        {
-            auto *pi( kmeta.kfifometa.ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-            auto idx_tmp( idxs_in[ i ] );
-            do
-            {
-                if( ! fifos[ idx_tmp ]->is_invalid() )
-                {
-                    return true;
-                }
-                idx_tmp += nclones;
-                idx_tmp %= nfifos;
-            } while( idx_tmp != idxs_in[ i ] );
-        }
-        return false;
+        return rrmeta.hasValidInput();
     }
 
     virtual bool hasInputData( const port_key_t &name ) override
     {
-        auto ninputs( kmeta.kfifometa.name2port_in.size() );
-        if( 0 == ninputs )
-        {
-            /** only output ports, keep calling compute() till exits **/
-            return true ;
-        }
-
-        int port_beg = 0, port_end = ninputs;
-        if( null_port_value != name )
-        {
-            port_beg = kmeta.kfifometa.name2port_in.at( name );
-            port_end = port_beg + 1;
-        }
-
-        for( int i( port_beg ); port_end > i; ++i )
-        {
-            auto *pi( kmeta.kfifometa.ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-            auto idx_tmp( idxs_in[ i ] );
-            do
-            {
-                const auto size( fifos[ idx_tmp ]->size() );
-                if( 0 < size )
-                {
-                    idxs_in[ i ] = idx_tmp;
-                    return true;
-                }
-                idx_tmp += nclones;
-                idx_tmp %= nfifos;
-            } while( idx_tmp != idxs_in[ i ] );
-        }
-        return false;
+        return rrmeta.hasInputData( name );
     }
 
     virtual bool isStatic() const override
@@ -619,27 +457,7 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
                        std::unordered_map< FIFO*,
                                            CondVarWorker* > &fifo_consumers )
     {
-        auto ninputs( kmeta.kfifometa.name2port_in.size() );
-        for( std::size_t i( 0 ); ninputs > i; ++i )
-        {
-            auto *pi( kmeta.kfifometa.ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-            for( auto idx( consumer->clone_id ); nfifos > idx; idx += nclones )
-            {
-                fifo_consumers[ fifos[ idx ] ] = consumer;
-            }
-        }
-
-        if( 0 == noutputs )
-        {
-            return;
-        }
-        auto *last_port( kmeta.kfifometa.ports_out_info[ noutputs - 1 ] );
-        auto noutfifos( idxs_out[ ( noutputs << 1 ) - 1 ] +
-                        last_port->runtime_info.nfifos );
-        consumers = new CondVarWorker*[ noutfifos ]();
-        fifo_consumers_ptr = &fifo_consumers;
+        rrmeta.consumerInit( consumer, fifo_consumers );
     }
 };
 
