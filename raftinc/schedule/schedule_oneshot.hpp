@@ -39,33 +39,8 @@ namespace raft {
 inline __thread tcache_perthread __perthread_oneshot_task_pt;
 #endif
 
-#if USE_QTHREAD /* group_id not defined in OneShotTask unless USE_QTHREAD */
-struct OneShotQTListNode : public TaskListNode
-{
-    OneShotQTListNode( Task *the_task ) : TaskListNode( the_task )
-    {
-        (this)->task->finished = &finished;
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
-        qthread_spawn( QThreadListNode::run,
-                       ( void* ) task,
-                       0,
-                       0,
-                       0,
-                       nullptr,
-                       (0 <= oneshot->group_id) ? oneshot->group_id :
-                                                  task->kernel->getGroup(),
-                       0 );
-    }
-
-    virtual ~OneShotQTListNode()
-    {
-        delete task;
-    }
-};
-#endif
-
 #if USE_QTHREAD
-using OneShotListNode = struct OneShotQTListNode;
+using OneShotListNode = struct QThreadListNode;
 #else
 using OneShotListNode = struct StdThreadListNode;
 #endif
@@ -143,7 +118,7 @@ protected:
 
         int64_t gid = -1;
         task->id = task_id.fetch_add( 1, std::memory_order_relaxed );
-#if USE_QTHREAD
+#if USE_UT || USE_QTHREAD
         gid = src_id.fetch_add( 1, std::memory_order_relaxed );
 #endif
 
@@ -265,18 +240,32 @@ protected:
 
     virtual void run_oneshot( OneShotTask *oneshot, int64_t gid )
     {
+#if USE_QTHREAD
+        oneshot->group_id =
+            ( 0 <= gid ) ? oneshot->group_id : oneshot->kernel->getGroup();
+#else
         UNUSED( gid );
+#endif
 #if USE_UT
         waitgroup_add( &wg, 1 );
         oneshot->wg = &wg;
         rt::Spawn( [ oneshot ]() {
                 oneshot->exe();
-                tcache_free( &__perthread_oneshot_task_pt, oneshot ); } );
+                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
+                false,
+                gid );
 #else
-#if USE_QTHREAD
-        oneshot->group_id = gid;
-#endif
         auto *tnode( new OneShotListNode( oneshot ) );
+#if USE_QTHREAD
+        qthread_spawn( QThreadListNode::run,
+                       ( void* ) static_cast< Task* >( oneshot ),
+                       0,
+                       0,
+                       0,
+                       nullptr,
+                       oneshot->group_id,
+                       0 );
+#endif
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();

@@ -66,14 +66,6 @@ struct QThreadListNode : public TaskListNode
     QThreadListNode( Task *the_task ) : TaskListNode( the_task )
     {
         (this)->task->finished = &finished;
-        qthread_spawn( QThreadListNode::run,
-                       ( void* ) task,
-                       0,
-                       0,
-                       0,
-                       nullptr,
-                       task->kernel->getGroup() % qthread_num_shepherds(),
-                       0 );
     }
 
     virtual ~QThreadListNode()
@@ -270,11 +262,23 @@ private:
 
     inline void run_worker( Task *task )
     {
+        auto *worker( static_cast< PollingWorker* >( task ) );
 #if USE_UT
         task->wg = &wg;
-        rt::Spawn( [ task ](){ task->exe(); delete task; } );
+        rt::Spawn( [ task ](){ task->exe(); delete task; }, false,
+                   ( worker->clone_id + task->kernel->getGroup() ) );
 #else
         auto *tnode( new PollingWorkerListNode( task ) );
+#if USE_QTHREAD
+        qthread_spawn( QThreadListNode::run,
+                       ( void* ) task,
+                       0,
+                       0,
+                       0,
+                       nullptr,
+                       worker->clone_id + task->kernel->getGroup(),
+                       0 );
+#endif
         while( ! tasks_mutex.try_lock() )
         {
             raft::yield();
