@@ -100,8 +100,8 @@ public:
                     std::max( 1, a.my_kernel->getCloneFactor() ),
                     std::max( 1, b.my_kernel->getCloneFactor() ) );
             a.runtime_info.nfifos = b.runtime_info.nfifos = nfifos;
-            auto *fifos( new FIFO*[ nfifos + 2 ] );
-            /* allocate 1 more FIFO for oneshot tasks, 1 more for nullptr */
+            auto *fifos( new FIFO*[ nfifos + 1 ] );
+            /* allocate 1 more for nullptr */
             allocated_fifos.insert( fifos );
             a.runtime_info.fifos = b.runtime_info.fifos = fifos;
             auto *functor( a.runtime_info.fifo_functor );
@@ -121,11 +121,8 @@ public:
                             INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
                 }
             }
-            /* allocate one more fifo as the mutex-protected fifo */
-            fifos[ nfifos ] = functor->make_new_fifo_mutexed(
-                    INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
             /* mark the end of the fifos array */
-            fifos[ nfifos + 1 ] = nullptr;
+            fifos[ nfifos ] = nullptr;
         };
 
         GraphTools::BFS( dag.getSourceKernels(), func );
@@ -144,30 +141,6 @@ public:
         return dag;
     }
 
-#if UT_FOUND
-    virtual void globalInitialize()
-    {
-        if( ! Singleton::schedule()->doesOneShot() )
-        {
-            return;
-        }
-        slab_create( &streaming_data_slab, "streamingdata",
-                     sizeof( StreamingData ), 0 );
-        streaming_data_tcache = slab_create_tcache( &streaming_data_slab,
-                                                    TCACHE_DEFAULT_MAG_SIZE );
-    }
-
-    virtual void perthreadInitialize()
-    {
-        if( ! Singleton::schedule()->doesOneShot() )
-        {
-            return;
-        }
-        tcache_init_perthread( streaming_data_tcache,
-                               &__perthread_streaming_data_pt );
-    }
-#endif
-
     virtual bool dataInReady( Task *task, const port_key_t &name )
     {
         return task_has_input_data( task );
@@ -180,21 +153,8 @@ public:
 
     virtual void taskInit( Task *task, bool alloc_input )
     {
-        if( POLLING_WORKER == task->type )
-        {
-            auto *t( static_cast< PollingWorker* >( task ) );
-            polling_worker_init( t );
-        }
-        else if( CONDVAR_WORKER == task->type )
-        {
-            auto *t( static_cast< CondVarWorker* >( task ) );
-            condvar_worker_init( t );
-        }
-        else if( ONE_SHOT == task->type )
-        {
-            auto *t( static_cast< OneShotTask* >( task ) );
-            oneshot_init( t, alloc_input );
-        }
+        UNUSED( alloc_input );
+        worker_init( task );
     }
 
     virtual void registerConsumer( Task *task )
@@ -204,92 +164,61 @@ public:
 
     virtual void taskCommit( Task *task )
     {
-        if( ONE_SHOT == task->type )
-        {
-            oneshot_commit( static_cast< OneShotTask* >( task ) );
-        }
+        UNUSED( task );
     }
 
     virtual void invalidateOutputs( Task *task )
     {
-        if( ONE_SHOT != task->type )
-        {
-            auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-            tmeta->invalidateOutputs();
-        }
-        //TODO: design for oneshot task
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->invalidateOutputs();
     }
 
     virtual bool taskHasInputPorts( Task *task )
     {
-        if( ONE_SHOT != task->type )
-        {
-            auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-            return tmeta->hasValidInput();
-        }
-        //TODO: design for oneshot task
-        return true;
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        return tmeta->hasValidInput();
     }
 
     virtual int select( Task *task, const port_key_t &name, bool is_in )
     {
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        if( is_in )
-        {
-            return tmeta->selectIn( name );
-        }
-        else
-        {
-            return tmeta->selectOut( name );
-        }
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        return is_in ? tmeta->selectIn( name ) : tmeta->selectOut( name );
     }
 
     virtual void taskPop( Task *task, int selected, DataRef &item )
     {
-        // oneshot task should have all input data satisfied by StreamingData
-        assert( ONE_SHOT != task->type );
-
         FIFOFunctor *functor;
         FIFO *fifo;
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        tmeta->getPairIn( functor, fifo, selected );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairIn( functor, fifo );
         functor->pop( fifo, item );
     }
 
     virtual DataRef taskPeek( Task *task, int selected )
     {
-        // oneshot task should have all input data satisfied by StreamingData
-        assert( ONE_SHOT != task->type );
-
         FIFOFunctor *functor;
         FIFO *fifo;
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        tmeta->getPairIn( functor, fifo, selected );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairIn( functor, fifo );
         return functor->peek( fifo );
     }
 
     virtual void taskRecycle( Task *task, int selected )
     {
-        if( ONE_SHOT != task->type )
-        {
-            FIFOFunctor *functor;
-            FIFO *fifo;
-            auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-            tmeta->getPairIn( functor, fifo, selected );
-            return functor->recycle( fifo );
-        }
-        // else do nothing, b/c we have dedicated the data for this task
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairIn( functor, fifo );
+        return functor->recycle( fifo );
     }
 
     virtual void taskPush( Task *task, int selected, DataRef &item )
     {
         FIFOFunctor *functor;
         FIFO *fifo;
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo, selected, ONE_SHOT == task->type );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairOut( functor, fifo );
         functor->push( fifo, item );
-        // wake up the worker waiting for data
-        (this)->wakeup_consumer( tmeta, selected );
         tmeta->nextFIFO( selected );
     }
 
@@ -297,8 +226,8 @@ public:
     {
         FIFOFunctor *functor;
         FIFO *fifo;
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo, selected, ONE_SHOT == task->type );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairOut( functor, fifo );
         return functor->allocate( fifo );
     }
 
@@ -306,41 +235,36 @@ public:
     {
         FIFOFunctor *functor;
         FIFO *fifo;
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo, selected, ONE_SHOT == task->type );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairOut( functor, fifo );
         functor->send( fifo );
-        // wake up the worker waiting for data
-        (this)->wakeup_consumer( tmeta, selected );
         tmeta->nextFIFO( selected );
     }
 
     virtual bool schedPop( Task *task, PortInfo *&pi_ptr, DataRef &ref,
                            int *selected, bool *is_last )
     {
-        assert( ONE_SHOT == task->type );
+        throw MethodNotImplementdException( "AllocateFIFO::schedPop()" );
+        UNUSED( task );
+        UNUSED( pi_ptr );
+        UNUSED( ref );
+        UNUSED( selected );
         UNUSED( is_last );
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
-        while ( (std::size_t)*selected < task->kernel->output.size() )
-        {
-            FIFOFunctor *functor;
-            FIFO *fifo;
-            tmeta->getDrainPairOut( functor, fifo, *selected );
-            if( 0 >= fifo->size() )
-            {
-                *selected = *selected + 1;
-                continue;
-            }
-            ref = functor->bullet_allocate();
-            /* NOTE: might have race condition, fifo was not empty but it got
-             * popped by another oneshot task doing schedPop then blocking */
-            functor->pop( fifo, ref );
-            pi_ptr = tmeta->getPortsOutInfo()[ *selected ];
-            return true;
-        }
-        return false;
+        return true;
     }
 
 protected:
+
+#if RAFT_GREEDY_FIFO_SELECTION
+    typedef GreedyTaskFIFOAllocMeta WorkerFIFOAllocMeta;
+#else
+    typedef RRTaskFIFOAllocMeta WorkerFIFOAllocMeta;
+#endif
+
+    inline static WorkerFIFOAllocMeta *cast_meta( TaskAllocMeta *meta )
+    {
+        return static_cast< WorkerFIFOAllocMeta* >( meta );
+    }
 
     /**
      * task_has_input_data - check each input fifos for available
@@ -353,108 +277,18 @@ protected:
     bool task_has_input_data( Task *task,
                               const port_key_t &name = null_port_value )
     {
-        assert( ONE_SHOT != task->type );
-
-        auto *tmeta( static_cast< FIFOAllocMeta* >( task->alloc_meta ) );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
 
         return tmeta->hasInputData( name );
     }
 
-    inline void polling_worker_init( PollingWorker *worker )
+    inline void worker_init( Task *task )
     {
+        auto *worker( static_cast< PollingWorker* >( task ) );
         auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
-                    worker->kernel->getAllocMeta() ) );
-
-        if( kmeta->nosharers )
-        {
-            worker->alloc_meta = kmeta;
-        }
-        else
-        {
-            worker->alloc_meta = new RRTaskFIFOAllocMeta( *kmeta,
-                                                          worker->clone_id );
-        }
-    }
-
-    inline void condvar_worker_init( CondVarWorker *worker )
-    {
-        auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
-                    worker->kernel->getAllocMeta() ) );
-
-        worker->alloc_meta =
-#if RAFT_GREEDY_CVWORKER
-            new GreedyTaskFIFOAllocMeta( *kmeta, worker->clone_id );
-#else
-            new RRTaskFIFOAllocMeta( *kmeta, worker->clone_id );
-#endif
-    }
-
-    inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
-    {
-        oneshot->stream_in = nullptr;
-        auto sd_type( ( 1 < oneshot->kernel->output.size() ) ?
-                      StreamingData::OUT_1PIECE :
-                      StreamingData::SINGLE_OUT_1PIECE );
-#if USE_UT
-        auto *stream_out_ptr_tmp(
-                tcache_alloc( &__perthread_streaming_data_pt ) );
-        oneshot->stream_out =
-            new ( stream_out_ptr_tmp ) StreamingData( oneshot, sd_type );
-        if( alloc_input )
-        {
-            auto sd_in_type( 1 < oneshot->kernel->input.size() ?
-                             StreamingData::IN_1PIECE :
-                             StreamingData::SINGLE_IN_1PIECE );
-            auto *stream_in_ptr_tmp(
-                    tcache_alloc( &__perthread_streaming_data_pt ) );
-            oneshot->stream_in = new ( stream_in_ptr_tmp ) StreamingData(
-                    oneshot, sd_in_type );
-        }
-#else
-        oneshot->stream_out = new StreamingData( oneshot, sd_type );
-        if( alloc_input )
-        {
-            auto sd_in_type( 1 < oneshot->kernel->input.size() ?
-                             StreamingData::IN_1PIECE :
-                             StreamingData::SINGLE_IN_1PIECE );
-            oneshot->stream_in = new StreamingData( oneshot, sd_in_type );
-        }
-#endif
-        auto &output_ports( oneshot->kernel->output );
-
-        oneshot->alloc_meta = oneshot->kernel->getAllocMeta();
-
-        for( auto &p : output_ports )
-        {
-            oneshot->stream_out->set(
-                    p.first,
-                    p.second.runtime_info.bullet_functor->allocate() );
-            /* TODO: needs to find a place to release the malloced data */
-        }
-    }
-
-    static inline void oneshot_commit( OneShotTask *oneshot )
-    {
-        if( nullptr != oneshot->stream_in )
-        {
-#if USE_UT
-            tcache_free( &__perthread_streaming_data_pt, oneshot->stream_in );
-#else
-            delete oneshot->stream_in;
-#endif
-            oneshot->stream_in = nullptr;
-        }
-        /* stream_out might have been assigned to a consumer task as stream_in
-         * if is1Piece() && isSingle() && isSent() */
-        if( nullptr != oneshot->stream_out )
-        {
-#if USE_UT
-            tcache_free( &__perthread_streaming_data_pt, oneshot->stream_out );
-#else
-            delete oneshot->stream_out;
-#endif
-            oneshot->stream_out = nullptr;
-        }
+                    task->kernel->getAllocMeta() ) );
+        task->alloc_meta =
+            new WorkerFIFOAllocMeta( *kmeta, worker->clone_id );
     }
 
     /**
@@ -465,17 +299,6 @@ protected:
     virtual void preset_fifo_consumers()
     {
         /* do nothing */
-    }
-
-    /**
-     * wakeup_consumer - this is the hook function to allow
-     * AllocateFIFOCV to override and wakeup the consumer based on its record
-     */
-    virtual void wakeup_consumer( FIFOAllocMeta *tmeta, int selected )
-    {
-        /* do nothing */
-        UNUSED( tmeta );
-        UNUSED( selected );
     }
 
     /**
@@ -500,11 +323,36 @@ public:
 
     virtual ~AllocateFIFOCV() = default;
 
+    virtual void taskPush( Task *task, int selected, DataRef &item )
+    {
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairOut( functor, fifo );
+        functor->push( fifo, item );
+        // wake up the worker waiting for data
+        tmeta->wakeupConsumer();
+        tmeta->nextFIFO( selected );
+    }
+
+    virtual void taskSend( Task *task, int selected )
+    {
+        FIFOFunctor *functor;
+        FIFO *fifo;
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        tmeta->getPairOut( functor, fifo );
+        functor->send( fifo );
+        // wake up the worker waiting for data
+        tmeta->wakeupConsumer();
+        tmeta->nextFIFO( selected );
+    }
+
     virtual void registerConsumer( Task *task )
     {
         assert( CONDVAR_WORKER == task->type );
-        auto *t( static_cast< CondVarWorker* >( task ) );
-        condvar_worker_register_consumer( t );
+        auto *tmeta( cast_meta( task->alloc_meta ) );
+        auto *worker( static_cast< CondVarWorker* >( task ) );
+        tmeta->consumerInit( worker, fifo_consumers );
     }
 
 protected:
@@ -520,32 +368,6 @@ protected:
                 fifo_consumers[ fifos[ idx++ ] ] = nullptr;
             }
         }
-    }
-
-    virtual void wakeup_consumer( FIFOAllocMeta *tmeta, int selected )
-    {
-        auto *fifo( tmeta->wakeupConsumer( selected ) );
-        if( nullptr != fifo )
-        {
-            auto *worker( fifo_consumers[ fifo ] );
-            if( nullptr != worker )
-            {
-                tmeta->setConsumer( selected, worker );
-            }
-        }
-    }
-
-private:
-    inline void condvar_worker_register_consumer( CondVarWorker *worker )
-    {
-#if RAFT_GREEDY_CVWORKER
-        auto *tmeta( static_cast< GreedyTaskFIFOAllocMeta* >(
-#else
-        auto *tmeta( static_cast< RRTaskFIFOAllocMeta* >(
-#endif
-                    worker->alloc_meta ) );
-
-        tmeta->consumerInit( worker, fifo_consumers );
     }
 
     std::unordered_map< FIFO*, CondVarWorker* > fifo_consumers;

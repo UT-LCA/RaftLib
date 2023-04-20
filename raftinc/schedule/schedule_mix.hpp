@@ -101,7 +101,10 @@ public:
 
     virtual void postexit( Task* task )
     {
-        Singleton::allocate()->invalidateOutputs( task );
+        if( ONE_SHOT != task->type )
+        {
+            Singleton::allocate()->invalidateOutputs( task );
+        }
 #if USE_UT
         waitgroup_done( task->wg );
 #else

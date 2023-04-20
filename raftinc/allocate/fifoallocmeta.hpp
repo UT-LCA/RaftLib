@@ -58,132 +58,30 @@
 namespace raft
 {
 
-struct FIFOAllocMeta : public TaskAllocMeta
-{
-    FIFOAllocMeta() : TaskAllocMeta() {}
-    virtual ~FIFOAllocMeta() = default;
-
-    /* selectIn - select an input port by name
-     * @param name - const port_key_t &
-     * @return int - selected input port index
-     */
-    virtual int selectIn( const port_key_t &name ) = 0;
-
-    /* selectOut - select an output port by name
-     * @param name - const port_key_t &
-     * @return int - selected output port index
-     */
-    virtual int selectOut( const port_key_t &name ) = 0;
-
-    /* getPortsInInfo - get the port info of input port
-     * @return PortInfo*
-     */
-    virtual PortInfo **getPortsInInfo() const = 0;
-
-    /* getPortsOutInfo - get the port info of output ports
-     * @return PortInfo*
-     */
-    virtual PortInfo **getPortsOutInfo() const = 0;
-
-    /* getPairIn - get the functor and fifo of currently selected input port
-     * @param functor - FIFOFunctor *&
-     * @param fifo - FIFO *&
-     * @param selected - int
-     */
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const = 0;
-
-    /* getPairOut - get the functor and fifo of currently selected output port
-     * @param functor - FIFOFunctor *&
-     * @param fifo - FIFO *&
-     * @param selected - int
-     * @param is_oneshot - int
-     * @return bool - true if output FIFO valid
-     */
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false ) = 0;
-
-    /* getDrainPairOut - get the functor and fifo of currently
-     * output port being drain, used by OneShotTask
-     * @param functor - FIFOFunctor *&
-     * @param fifo - FIFO *&
-     * @param selected - int
-     */
-    virtual void getDrainPairOut( FIFOFunctor *&functor,
-                                  FIFO *&fifo,
-                                  int selected ) const = 0;
-
-    /* nextFIFO - iterate to the next FIFO on the selected output port
-     * @param selected - int
-     */
-    virtual void nextFIFO( int selected ) = 0;
-
-    /* wakeupConsumer - wakeup the consumer on the selected output FIFO,
-     * used by AllocateFIFOCV after push/send
-     * @param selected - int
-     * @return FIFO * - nullptr indicates a successful wakeup, otherwise
-     *                  it returns the FIFO pointer missing consumer info
-     *                  so AllocateFIFOCV could lookup fifo_consumers to
-     *                  populate the consumers[]
-     */
-    virtual FIFO *wakeupConsumer( int selected ) const = 0;
-
-    /* setConsumer - set the consumer on the selected output FIFO
-     * @param selected - int
-     * @param CondVarWorker * - worker
-     */
-    virtual void setConsumer( int selected, CondVarWorker *worker ) = 0;
-
-    /* invalidateOutputs - invalidate all the output ports */
-    virtual void invalidateOutputs() const = 0;
-
-    /* hasValidInput - check whether there is still valid input port */
-    virtual bool hasValidInput() const = 0;
-
-    /* hasInputData - check whether there is any input data */
-    virtual bool hasInputData( const port_key_t &name ) = 0;
-
-    /* isStatic - is this alloc meta static */
-    virtual bool isStatic() const = 0;
-};
-
 /* KernelFIFOAllocMeta - Hold all read-only data for a kernel,
  * might be assigned to a task if no multiple fifos on any of the port
  */
-struct KernelFIFOAllocMeta : public FIFOAllocMeta
+struct KernelFIFOAllocMeta : public TaskAllocMeta
 {
     using name2port_map_t = std::unordered_map< port_key_t, int >;
-    KernelFIFOAllocMeta( Kernel *k ) : FIFOAllocMeta()
+    KernelFIFOAllocMeta( Kernel *k ) : TaskAllocMeta()
     {
         ports_in_info = new PortInfo*[ k->input.size() ];
         ports_out_info = new PortInfo*[ k->output.size() ];
         name2port_in.reserve( k->input.size() );
         name2port_out.reserve( k->output.size() );
 
-        nosharers = ( 1 >= k->getCloneFactor() );
-
         int idx = 0;
         for( auto &p : k->input )
         {
             name2port_in.emplace( p.first, idx );
             ports_in_info[ idx++ ] = &p.second;
-            if( 1 < p.second.runtime_info.nfifos )
-            {
-                nosharers = false;
-            }
         }
         idx = 0;
         for( auto &p : k->output )
         {
             name2port_out.emplace( p.first, idx );
             ports_out_info[ idx++ ] = &p.second;
-            if( 1 < p.second.runtime_info.nfifos )
-            {
-                nosharers = false;
-            }
         }
     }
 
@@ -203,155 +101,49 @@ struct KernelFIFOAllocMeta : public FIFOAllocMeta
     PortInfo **ports_in_info;
     PortInfo **ports_out_info;
 
-    bool nosharers;
-
-    virtual int selectIn( const port_key_t &name )
+    /* selectIn - select an input port by name
+     * @param name - const port_key_t &
+     * @return int - selected input port index
+     */
+    int selectIn( const port_key_t &name ) const
     {
         auto iter( name2port_in.find( name ) );
         assert( name2port_in.end() != iter );
         return iter->second;
     }
 
-    virtual int selectOut( const port_key_t &name )
+    /* selectOut - select an output port by name
+     * @param name - const port_key_t &
+     * @return int - selected output port index
+     */
+    int selectOut( const port_key_t &name ) const
     {
         auto iter( name2port_out.find( name ) );
         assert( name2port_out.end() != iter );
         return iter->second;
     }
 
-    virtual PortInfo **getPortsInInfo() const
+    /* getPortsInInfo - get the port info of input port
+     * @return PortInfo*
+     */
+    PortInfo **getPortsInInfo() const
     {
         return ports_in_info;
     }
 
-    virtual PortInfo **getPortsOutInfo() const
+    /* getPortsOutInfo - get the port info of output ports
+     * @return PortInfo*
+     */
+    PortInfo **getPortsOutInfo() const
     {
         return ports_out_info;
     }
-
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const
-    {
-        auto *pi( ports_in_info[ selected ] );
-        functor = pi->runtime_info.fifo_functor;
-        fifo = pi->runtime_info.fifos[ 0 ];
-    }
-
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false )
-    {
-        auto *pi( ports_out_info[ selected ] );
-        functor = pi->runtime_info.fifo_functor;
-        fifo = pi->runtime_info.fifos[ is_oneshot ? 1 : 0 ];
-        return true;
-    }
-
-    virtual void getDrainPairOut( FIFOFunctor *&functor,
-                                  FIFO *&fifo,
-                                  int selected ) const
-    {
-        auto *pi( ports_out_info[ selected ] );
-        functor = pi->runtime_info.fifo_functor;
-        fifo = pi->runtime_info.fifos[ 1 ];
-    }
-
-    virtual void nextFIFO( int selected )
-    {
-        UNUSED( selected );
-    }
-
-    virtual FIFO *wakeupConsumer( int selected ) const
-    {
-        UNUSED( selected );
-        return nullptr;
-    }
-
-    virtual void setConsumer( int selected, CondVarWorker *worker )
-    {
-        UNUSED( selected );
-        UNUSED( worker );
-    }
-
-    virtual void invalidateOutputs() const
-    {
-        auto noutputs( name2port_out.size() );
-        for( std::size_t i( 0 ); noutputs > i; ++i )
-        {
-            auto *pi( ports_out_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            fifos[ 0 ]->invalidate();
-        }
-    }
-
-    virtual bool hasValidInput() const
-    {
-        auto ninputs( name2port_in.size() );
-        if( 0 == ninputs )
-        {
-            /* let the source polling worker loop until the stop signal */
-            return true;
-        }
-        for( std::size_t i( 0 ); ninputs > i; ++i )
-        {
-            auto *pi( ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            if( ! fifos[ 0 ]->is_invalid() )
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    virtual bool hasInputData( const port_key_t &name )
-    {
-        auto ninputs( name2port_in.size() );
-
-        if( 0 == ninputs )
-        {
-            /** only output ports, keep calling compute() till exits **/
-            return true ;
-        }
-
-        std::size_t port_beg = 0, port_end = ninputs;
-        if( null_port_value != name )
-        {
-            port_beg = name2port_in.at( name );
-            port_end = port_beg + 1;
-        }
-
-        for( std::size_t i( port_beg ); port_end > i; ++i )
-        {
-            auto *pi( ports_in_info[ i ] );
-            auto *fifos( pi->runtime_info.fifos );
-            auto nfifos( pi->runtime_info.nfifos );
-            for( int idx_tmp( 0 ); nfifos > idx_tmp; ++idx_tmp )
-            {
-                if( 0 < fifos[ idx_tmp ]->size() )
-                {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    virtual bool isStatic() const
-    {
-        return true;
-    }
 };
 
-/* RRTaskFIFOAllocMeta - used by PollingWorker having multiple FIFOs of an
- * port and would iterate in the Round-Robin manner.
- */
-struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
+struct TaskFIFOAllocMeta : public TaskAllocMeta
 {
-    RRTaskFIFOAllocMeta( KernelFIFOAllocMeta &meta, int rr_idx ) :
-        FIFOAllocMeta(),
+    TaskFIFOAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
+        TaskAllocMeta(),
         kmeta( meta ),
         ninputs( meta.name2port_in.size() ),
         noutputs( meta.name2port_out.size() ),
@@ -459,7 +251,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         fifo_consumers_ptr = nullptr;
     }
 
-    virtual ~RRTaskFIFOAllocMeta()
+    virtual ~TaskFIFOAllocMeta()
     {
         if( nullptr != idxs_in )
         {
@@ -482,7 +274,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         }
     }
 
-    KernelFIFOAllocMeta &kmeta;
+    const KernelFIFOAllocMeta &kmeta;
 
     const std::size_t ninputs;
     const std::size_t noutputs;
@@ -505,7 +297,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
     FIFO *fifo_in_selected;
     int idx_out_selected;
 
-    virtual int selectIn( const port_key_t &name )
+    int selectIn( const port_key_t &name )
     {
         auto selected( kmeta.selectIn( name ) );
         port_in_selected = ports_in_info[ selected ];
@@ -514,7 +306,7 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         return selected;
     }
 
-    virtual int selectOut( const port_key_t &name )
+    int selectOut( const port_key_t &name )
     {
         auto selected( kmeta.selectOut( name ) );
         port_out_selected = ports_out_info[ selected ];
@@ -523,65 +315,38 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         return selected;
     }
 
-    virtual PortInfo **getPortsInInfo() const
+    PortInfo **getPortsInInfo() const
     {
         return ports_in_info;
     }
 
-    virtual PortInfo **getPortsOutInfo() const
+    PortInfo **getPortsOutInfo() const
     {
         return ports_out_info;
     }
 
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const
+    /* getPairIn - get the functor and fifo of currently selected input port
+     * @param functor - FIFOFunctor *&
+     * @param fifo - FIFO *&
+     * @param selected - int
+     */
+    void getPairIn( FIFOFunctor *&functor,
+                    FIFO *&fifo )
     {
-        UNUSED( selected );
         fifo = fifo_in_selected;
         functor = port_in_selected->runtime_info.fifo_functor;
     }
 
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false )
+    /* wakeupConsumer - wakeup the consumer on the selected output FIFO,
+     * used by AllocateFIFOCV after push/send
+     */
+    void wakeupConsumer() const
     {
-        UNUSED( is_oneshot );
-        UNUSED( selected );
-        fifo = fifos_out[ idx_out_selected ];
-        functor = port_out_selected->runtime_info.fifo_functor;
-        return true;
-    }
-
-    virtual void getDrainPairOut( FIFOFunctor *&functor,
-                                  FIFO *&fifo,
-                                  int selected ) const
-    {
-        UNUSED( functor );
-        UNUSED( fifo );
-        UNUSED( selected );
-    }
-
-    virtual void nextFIFO( int selected )
-    {
-        /* to round-robin output FIFOs of the selected port */
-        if( idxs_out[ ( selected << 1 ) + 3 ] <= ++idxs_out[ selected << 1 ] )
-        {
-            idxs_out[ selected << 1 ] = idxs_out[ ( selected << 1 ) + 1 ];
-        }
-        idx_out_selected = idxs_out[ selected << 1 ] +
-                           idxs_out[ ( selected << 1 ) + 1 ];
-    }
-
-    virtual FIFO *wakeupConsumer( int selected ) const
-    {
-        UNUSED( selected );
         // wake up the worker waiting for data
         if( nullptr != consumers[ idx_out_selected ] )
         {
             consumers[ idx_out_selected ]->wakeup();
-            return nullptr;
+            return;
         }
         auto iter( fifo_consumers_ptr->find(
                     fifos_out[ idx_out_selected ] ) );
@@ -592,15 +357,11 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
             /* cache the lookup results */
             consumers[ idx_out_selected ]->wakeup();
         }
-        return nullptr;
+        return;
     }
 
-    virtual void setConsumer( int selected, CondVarWorker *worker )
-    {
-        consumers[ idx_out_selected ] = worker;
-    }
-
-    virtual void invalidateOutputs() const
+    /* invalidateOutputs - invalidate all the output ports */
+    void invalidateOutputs() const
     {
         if( 0 == noutputs )
         {
@@ -637,7 +398,8 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         }
     }
 
-    virtual bool hasValidInput() const
+    /* hasValidInput - check whether there is still valid input port */
+    bool hasValidInput() const
     {
         if( 0 == ninputs )
         {
@@ -655,7 +417,8 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         return false;
     }
 
-    virtual bool hasInputData( const port_key_t &name )
+    /* hasInputData - check whether there is any input data */
+    bool hasInputData( const port_key_t &name )
     {
         if( 0 == ninputs )
         {
@@ -690,11 +453,6 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
         return false;
     }
 
-    virtual bool isStatic() const
-    {
-        return false;
-    }
-
     /* consumerInit - allocate the consumers array, and also populate the
      * fifo_consumers map for AllocateFIFOCV
      * @param consumer - CondVarWorker*
@@ -724,22 +482,56 @@ struct RRTaskFIFOAllocMeta : public FIFOAllocMeta
     }
 };
 
-/* GreedyTaskFIFOAllocMeta - used by CondVarWorker having multiple FIFOs of an
- * port and would iterate in the greedy manner.
- */
-struct GreedyTaskFIFOAllocMeta : public RRTaskFIFOAllocMeta
+struct RRTaskFIFOAllocMeta : public TaskFIFOAllocMeta
 {
-    GreedyTaskFIFOAllocMeta( KernelFIFOAllocMeta &meta, int idx ) :
-        RRTaskFIFOAllocMeta( meta, idx )
+    RRTaskFIFOAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
+        TaskFIFOAllocMeta( meta, rr_idx )
     {
     }
 
-    virtual ~GreedyTaskFIFOAllocMeta() = default;
+    /* getPairOut - get the functor and fifo of currently selected output port
+     * @param functor - FIFOFunctor *&
+     * @param fifo - FIFO *&
+     * @param selected - int
+     * @return bool - true if output FIFO valid
+     */
+    bool getPairOut( FIFOFunctor *&functor,
+                     FIFO *&fifo )
+    {
+        fifo = fifos_out[ idx_out_selected ];
+        functor = port_out_selected->runtime_info.fifo_functor;
+        return true;
+    }
 
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false )
+    /* nextFIFO - iterate to the next FIFO on the selected output port
+     * @param selected - int
+     */
+    void nextFIFO( int selected )
+    {
+        /* to round-robin output FIFOs of the selected port */
+        if( idxs_out[ ( selected << 1 ) + 3 ] <= ++idxs_out[ selected << 1 ] )
+        {
+            idxs_out[ selected << 1 ] = idxs_out[ ( selected << 1 ) + 1 ];
+        }
+        idx_out_selected = idxs_out[ selected << 1 ] +
+                           idxs_out[ ( selected << 1 ) + 1 ];
+    }
+};
+
+/* GreedyTaskFIFOAllocMeta - used by CondVarWorker having multiple FIFOs of an
+ * port and would iterate in the greedy manner.
+ */
+struct GreedyTaskFIFOAllocMeta : public TaskFIFOAllocMeta
+{
+    GreedyTaskFIFOAllocMeta( KernelFIFOAllocMeta &meta, int idx ) :
+        TaskFIFOAllocMeta( meta, idx )
+    {
+    }
+
+    bool getPairOut( FIFOFunctor *&functor,
+                     FIFO *&fifo,
+                     int selected,
+                     bool is_oneshot = false )
     {
         UNUSED( is_oneshot );
         functor = ports_out_info[ selected ]->runtime_info.fifo_functor;
@@ -758,7 +550,7 @@ struct GreedyTaskFIFOAllocMeta : public RRTaskFIFOAllocMeta
         return true;
     }
 
-    virtual void nextFIFO( int selected )
+    void nextFIFO( int selected )
     {
         UNUSED( selected );
     }

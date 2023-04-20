@@ -38,274 +38,18 @@
 namespace raft
 {
 
-struct MixAllocMeta : public TaskAllocMeta
+struct BufListMetaAddOn
 {
-    MixAllocMeta() : TaskAllocMeta() {}
-    virtual ~MixAllocMeta() = default;
-
-    /* Interfaces from FIFOAllocMeta */
-    virtual int selectIn( const port_key_t &name ) = 0;
-    virtual int selectOut( const port_key_t &name ) = 0;
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const = 0;
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false ) = 0;
-    virtual void nextFIFO( int selected ) = 0;
-    virtual FIFO *wakeupConsumer( int selected ) const = 0;
-    virtual void setConsumer( int selected, CondVarWorker *worker ) = 0;
-    virtual void invalidateOutputs() const = 0;
-    virtual bool hasValidInput() const = 0;
-    virtual bool hasInputData( const port_key_t &name ) = 0;
-    virtual bool isStatic() const = 0;
-
-    /* Extended interfaces */
-
-    /* pushOutBuf - append data to outbufs list
-     * @param ref - DataRef &
-     * @param selected - int
-     */
-    virtual void pushOutBuf( DataRef &ref,
-                             int selected ) = 0;
-
-    /* allocateOutBuf - allocate an output buffer in outbufs list
-     * @param ref - DataRef &
-     * @param selected - int
-     */
-    virtual DataRef allocateOutBuf( int selected ) = 0;
-
-    /* popOutBuf - used by schedPop to get the DataRef and PortInfo
-     * of the task being drain
-     * @param pi_ptr - PortInfo *&
-     * @param ref - DataRef &
-     * @param is_last - bool *
-     * @return bool - true for valid data popped
-     */
-    virtual bool popOutBuf( PortInfo *& pi_ptr,
-                            DataRef &ref,
-                            bool *is_last ) = 0;
-
-};
-
-/* KernelMixAllocMeta - Hold all read-only data for a kernel,
- * might be assigned to a task if no multiple fifos on any of the port
- */
-struct KernelMixAllocMeta : public MixAllocMeta
-{
-    KernelMixAllocMeta( Kernel *k ) : kfifometa( k )
+    BufListMetaAddOn( const KernelFIFOAllocMeta &meta ) : kmeta( meta )
     {
     }
 
-    virtual ~KernelMixAllocMeta() = default;
+    const KernelFIFOAllocMeta &kmeta;
 
-    KernelFIFOAllocMeta kfifometa;
-
-    virtual int selectIn( const port_key_t &name )
-    {
-        return kfifometa.selectIn( name );
-    }
-
-    virtual int selectOut( const port_key_t &name )
-    {
-        return kfifometa.selectOut( name );
-    }
-
-    virtual PortInfo **getPortsInInfo() const
-    {
-        return kfifometa.getPortsInInfo();
-    }
-
-    virtual PortInfo **getPortsOutInfo() const
-    {
-        return kfifometa.getPortsOutInfo();
-    }
-
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const
-    {
-        kfifometa.getPairIn( functor, fifo, selected );
-    }
-
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false )
-    {
-        UNUSED( is_oneshot );
-        auto *pi( kfifometa.ports_out_info[ selected ] );
-#if IGNORE_HINT_0CLONE
-#else
-        if( 0 == pi->runtime_info.nfifos )
-        {
-            return false;
-            /* switch to OneShot since kernel has zero polling worker */
-        }
-#endif
-        fifo = pi->runtime_info.fifos[ 0 ];
-#if IGNORE_HINT_FULLQ
-#else
-        if( 0 == fifo->space_avail() )
-        {
-            return false;
-        }
-#endif
-        functor = pi->runtime_info.fifo_functor;
-        return true;
-    }
-
-    virtual void nextFIFO( int selected )
-    {
-        UNUSED( selected );
-    }
-
-    virtual FIFO *wakeupConsumer( int selected ) const
-    {
-        UNUSED( selected );
-        return nullptr;
-    }
-
-    virtual void setConsumer( int selected, CondVarWorker *worker )
-    {
-        UNUSED( selected );
-        UNUSED( worker );
-    }
-
-    virtual void invalidateOutputs() const
-    {
-        kfifometa.invalidateOutputs();
-    }
-
-    virtual bool hasValidInput() const
-    {
-        return kfifometa.hasValidInput();
-    }
-
-    virtual bool hasInputData( const port_key_t &name )
-    {
-        return kfifometa.hasInputData( name );
-    }
-
-    virtual bool isStatic() const
-    {
-        return true;
-    }
-
-    virtual void pushOutBuf( DataRef &ref, int selected )
-    {
-        UNUSED( ref );
-        UNUSED( selected );
-    }
-
-    virtual DataRef allocateOutBuf( int selected )
-    {
-        UNUSED( selected );
-        return DataRef();
-    }
-
-    virtual bool popOutBuf( PortInfo *&pi_ptr, DataRef &ref, bool *is_last )
-    {
-        UNUSED( pi_ptr );
-        UNUSED( ref );
-        UNUSED( is_last );
-        return false;
-    }
-};
-
-struct OneShotMixAllocMeta : public MixAllocMeta
-{
-    OneShotMixAllocMeta( KernelMixAllocMeta & meta ) :
-        MixAllocMeta(), kmeta( meta )
-    {
-    }
-
-    virtual ~OneShotMixAllocMeta() = default;
-
-    KernelMixAllocMeta &kmeta;
-
-    virtual int selectIn( const port_key_t &name )
-    {
-        return kmeta.selectIn( name );
-    }
-
-    virtual int selectOut( const port_key_t &name )
-    {
-        return kmeta.selectOut( name );
-    }
-
-    virtual PortInfo **getPortsInInfo() const
-    {
-        return kmeta.getPortsInInfo();
-    }
-
-    virtual PortInfo **getPortsOutInfo() const
-    {
-        return kmeta.getPortsOutInfo();
-    }
-
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const
-    {
-        kmeta.getPairIn( functor, fifo, selected );
-    }
-
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false )
-    {
-        UNUSED( functor );
-        UNUSED( fifo );
-        UNUSED( selected );
-        UNUSED( is_oneshot );
-        return false; /* OneShotMixAllocMeta used by OneShotTask only */
-    }
-
-    virtual void nextFIFO( int selected )
-    {
-        UNUSED( selected );
-    }
-
-    virtual FIFO *wakeupConsumer( int selected ) const
-    {
-        UNUSED( selected );
-        return nullptr;
-    }
-
-    virtual void setConsumer( int selected, CondVarWorker *worker )
-    {
-        UNUSED( selected );
-        UNUSED( worker );
-    }
-
-    virtual void invalidateOutputs() const
-    {
-        /* do nothing */
-    }
-
-    virtual bool hasValidInput() const
-    {
-        return true;
-    }
-
-    virtual bool hasInputData( const port_key_t &name )
-    {
-        UNUSED( name );
-        return true;
-    }
-
-    virtual bool isStatic() const
-    {
-        return false;
-    }
-
-    virtual void pushOutBuf( DataRef &ref, int selected )
+    void pushOutBuf( DataRef &ref, int selected )
     {
         auto *node( new BufListNode() );
-        node->pi = kmeta.kfifometa.ports_out_info[ selected ];
+        node->pi = kmeta.ports_out_info[ selected ];
         auto *functor( node->pi->runtime_info.bullet_functor );
         node->ref = functor->allocate( ref );
         // insert into the linked list
@@ -313,10 +57,10 @@ struct OneShotMixAllocMeta : public MixAllocMeta
         outbufs.next = node;
     }
 
-    virtual DataRef allocateOutBuf( int selected )
+    DataRef allocateOutBuf( int selected )
     {
         auto *node( new BufListNode() );
-        node->pi = kmeta.kfifometa.ports_out_info[ selected ];
+        node->pi = kmeta.ports_out_info[ selected ];
         auto *functor( node->pi->runtime_info.bullet_functor );
         node->ref = functor->allocate();
         // insert into the linked list
@@ -325,7 +69,7 @@ struct OneShotMixAllocMeta : public MixAllocMeta
         return node->ref;
     }
 
-    virtual bool popOutBuf( PortInfo *&pi_ptr, DataRef &ref, bool *is_last )
+    bool popOutBuf( PortInfo *&pi_ptr, DataRef &ref, bool *is_last )
     {
         if( nullptr == outbufs.next )
         {
@@ -343,50 +87,62 @@ struct OneShotMixAllocMeta : public MixAllocMeta
     BufListNode outbufs;
 };
 
-struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
+
+struct OneShotMixAllocMeta : public TaskAllocMeta, public BufListMetaAddOn
 {
-    RRWorkerMixAllocMeta( KernelMixAllocMeta &meta, int rr_idx ) :
-        OneShotMixAllocMeta( meta ), rrmeta( meta.kfifometa, rr_idx )
+    OneShotMixAllocMeta( const KernelFIFOAllocMeta &meta ) :
+        TaskAllocMeta(), BufListMetaAddOn( meta )
     {
     }
 
-    virtual ~RRWorkerMixAllocMeta() = default;
+    virtual ~OneShotMixAllocMeta() = default;
 
-    RRTaskFIFOAllocMeta rrmeta;
-
-    virtual int selectIn( const port_key_t &name )
+    int selectIn( const port_key_t &name )
     {
-        return rrmeta.selectIn( name );
+        return kmeta.selectIn( name );
     }
 
-    virtual int selectOut( const port_key_t &name )
+    int selectOut( const port_key_t &name )
     {
-        return rrmeta.selectOut( name );
+        return kmeta.selectOut( name );
+    }
+};
+
+struct TaskMixAllocMeta : public TaskFIFOAllocMeta, public BufListMetaAddOn
+{
+    TaskMixAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
+        TaskFIFOAllocMeta( meta, rr_idx ), BufListMetaAddOn( meta )
+    {
+    }
+    using TaskFIFOAllocMeta::kmeta;
+};
+
+struct RRWorkerMixAllocMeta : public TaskMixAllocMeta
+{
+    RRWorkerMixAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
+        TaskMixAllocMeta( meta, rr_idx )
+    {
     }
 
-    virtual void getPairIn( FIFOFunctor *&functor,
-                            FIFO *&fifo,
-                            int selected ) const override
+    /* getPairOut - get the functor and fifo of currently selected output port
+     * @param functor - FIFOFunctor *&
+     * @param fifo - FIFO *&
+     * @param selected - int
+     * @return bool - true if output FIFO valid
+     */
+    bool getPairOut( FIFOFunctor *&functor,
+                     FIFO *&fifo )
     {
-        rrmeta.getPairIn( functor, fifo, selected );
-    }
-
-    virtual bool getPairOut( FIFOFunctor *&functor,
-                             FIFO *&fifo,
-                             int selected,
-                             bool is_oneshot = false ) override
-    {
-        UNUSED( is_oneshot ); /* RRWorkerMixAllocMeta is not for OneShotTask */
 #if IGNORE_HINT_0CLONE
 #else
-        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
-        if( 0 == pi->runtime_info.nfifos )
+        if( 0 == port_out_selected->runtime_info.nfifos )
         {
             return false;
             /* switch to OneShot since kernel has zero polling worker */
         }
 #endif
-        rrmeta.getPairOut( functor, fifo, selected, is_oneshot );
+        fifo = fifos_out[ idx_out_selected ];
+        functor = port_out_selected->runtime_info.fifo_functor;
 #if IGNORE_HINT_FULLQ
 #else
         if( 0 == fifo->space_avail() )
@@ -397,68 +153,20 @@ struct RRWorkerMixAllocMeta : public OneShotMixAllocMeta
         return true;
     }
 
-    virtual void nextFIFO( int selected ) override
-    {
-        rrmeta.nextFIFO( selected );
-    }
-
-    virtual FIFO *wakeupConsumer( int selected ) const
-    {
-#if IGNORE_HINT_0CLONE
-#else
-        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
-        if( 0 == pi->runtime_info.nfifos )
-        {
-            return nullptr;
-        }
-#endif
-        return rrmeta.wakeupConsumer( selected );
-    }
-
-    virtual void setConsumer( int selected, CondVarWorker *worker )
-    {
-#if IGNORE_HINT_0CLONE
-#else
-        auto *pi( kmeta.kfifometa.ports_out_info[ selected ] );
-        if( 0 == pi->runtime_info.nfifos )
-        {
-            return;
-        }
-#endif
-        rrmeta.setConsumer( selected, worker );
-    }
-
-    virtual void invalidateOutputs() const override
-    {
-        rrmeta.invalidateOutputs();
-    }
-
-    virtual bool hasValidInput() const override
-    {
-        return rrmeta.hasValidInput();
-    }
-
-    virtual bool hasInputData( const port_key_t &name ) override
-    {
-        return rrmeta.hasInputData( name );
-    }
-
-    virtual bool isStatic() const override
-    {
-        return false;
-    }
-
-    /* consumerInit - allocate the consumers array, and also populate the
-     * fifo_consumers map for AllocateMixCV
-     * @param consumer - CondVarWorker*
-     * @param fifo_consumers - std::unordered_map< FIFO*, CondVarWorker* > &
+    /* nextFIFO - iterate to the next FIFO on the selected output port
+     * @param selected - int
      */
-    void consumerInit( CondVarWorker* consumer,
-                       std::unordered_map< FIFO*,
-                                           CondVarWorker* > &fifo_consumers )
+    void nextFIFO( int selected )
     {
-        rrmeta.consumerInit( consumer, fifo_consumers );
+        /* to round-robin output FIFOs of the selected port */
+        if( idxs_out[ ( selected << 1 ) + 3 ] <= ++idxs_out[ selected << 1 ] )
+        {
+            idxs_out[ selected << 1 ] = idxs_out[ ( selected << 1 ) + 1 ];
+        }
+        idx_out_selected = idxs_out[ selected << 1 ] +
+                           idxs_out[ ( selected << 1 ) + 1 ];
     }
+
 };
 
 } /** end namespace raft **/

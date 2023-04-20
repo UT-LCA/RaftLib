@@ -105,9 +105,6 @@ using RuntimeFIFOCV = RuntimeTemp< PartitionBasic,
 using RuntimeFIFOGroupCV = RuntimeTemp< PartitionPriority,
                                        AllocateFIFOCV,
                                        ScheduleCV >;
-using RuntimeFIFOOneShot = RuntimeTemp< PartitionBasic,
-                                        AllocateFIFO,
-                                        ScheduleOneShot >;
 using RuntimeNewOneShot = RuntimeTemp< PartitionBasic,
                                        AllocateNew,
                                        ScheduleOneShot >;

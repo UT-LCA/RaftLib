@@ -123,11 +123,6 @@ main()
 
     s.reset();
     l.reset();
-    std::cout << "RuntimeFIFOOneShot\n";
-    dag.exe< raft::RuntimeFIFOOneShot >();
-
-    s.reset();
-    l.reset();
     std::cout << "RuntimeNewOneShot\n";
     dag.exe< raft::RuntimeNewOneShot >();
 
