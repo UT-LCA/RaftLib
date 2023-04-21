@@ -54,6 +54,7 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
 
     virtual ~PollingWorker() = default;
 
+    template< class SCHEDULER >
     kstatus::value_t exe()
     {
         StreamingData dummy_in( this, 1 >= kernel->input.size() ?
@@ -62,19 +63,19 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         StreamingData dummy_out( this, 1 >= kernel->output.size() ?
                                  StreamingData::SINGLE_OUT :
                                  StreamingData::OUT );
-        Singleton::schedule()->prepare( this );
-        while( ! Singleton::schedule()->shouldExit( this ) )
+        SCHEDULER::prepare( this );
+        while( ! SCHEDULER::shouldExit( this ) )
         {
-            if( Singleton::schedule()->readyRun( this ) )
+            if( SCHEDULER::readyRun( this ) )
             {
-                Singleton::schedule()->precompute( this );
+                SCHEDULER::precompute( this );
                 const auto sig_status(
                         (this)->kernel->compute( dummy_in, dummy_out ) );
-                Singleton::schedule()->postcompute( this, sig_status );
+                SCHEDULER::postcompute( this, sig_status );
             }
-            Singleton::schedule()->reschedule( this );
+            SCHEDULER::reschedule( this );
         }
-        Singleton::schedule()->postexit( this );
+        SCHEDULER::postexit( this );
 
         return kstatus::stop;
     }
@@ -97,12 +98,13 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 
     virtual ~CondVarWorker() = default;
 
+    template< class SCHEDULER >
     void wait()
     {
 #if USE_UT
         m.Lock();
-        while( ! Singleton::schedule()->readyRun( this ) &&
-               ! Singleton::schedule()->shouldExit( this ) )
+        while( ! SCHEDULER::readyRun( this ) &&
+               ! SCHEDULER::shouldExit( this ) )
         {
             cv.Wait( &m );
         }
@@ -110,8 +112,8 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 #else
         std::unique_lock lk( m );
         cv.wait( lk, [ & ]() {
-                return Singleton::schedule()->readyRun( this ) ||
-                       Singleton::schedule()->shouldExit( this ); } );
+                return SCHEDULER::readyRun( this ) ||
+                       SCHEDULER::shouldExit( this ); } );
         lk.unlock();
 #endif
     }

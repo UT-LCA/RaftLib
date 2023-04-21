@@ -52,6 +52,62 @@ struct TaskListNode
     bool finished;
 };
 
+struct StdThreadListNode : public TaskListNode
+{
+    template< class SCHEDULER, class T >
+    StdThreadListNode( SCHEDULER *scheduler, T *the_task, int64_t gid ) :
+        TaskListNode( static_cast< Task* >( reinterpret_cast< T* >( the_task ) ) ),
+        th( [ &, the_task ](){ (this)->task->finished = &finished;
+                               the_task->template exe< SCHEDULER >(); } )
+    {
+        UNUSED( scheduler );
+        UNUSED( gid );
+        /* added to argument list for template parameter deduction only */
+    }
+
+    virtual ~StdThreadListNode()
+    {
+        th.join();
+        delete task;
+    }
+
+    std::thread th;
+};
+
+#if QTHREAD_FOUND
+struct QThreadListNode : public TaskListNode
+{
+    template< class SCHEDULER, class T >
+    QThreadListNode( SCHEDULER *scheduler, T *the_task, int64_t gid ) :
+        TaskListNode( the_task )
+    {
+        UNUSED( scheduler );
+        (this)->task->finished = &finished;
+        qthread_spawn( run< SCHEDULER, T >,
+                       ( void* ) the_task,
+                       0,
+                       0,
+                       0,
+                       nullptr,
+                       gid,
+                       0 );
+    }
+
+    virtual ~QThreadListNode()
+    {
+        delete task;
+    }
+
+    template< class SCHEDULER, class T >
+    static aligned_t run( void *data )
+    {
+        auto * const task( reinterpret_cast< T* >( data ) );
+        task->template exe< SCHEDULER >();
+        return 0;
+    }
+};
+#endif
+
 class Schedule
 {
 public:
@@ -61,6 +117,7 @@ public:
         /* set myself as the singleton scheduler */
         Singleton::schedule( this );
         tasks = new TaskListNode(); /* dummy head */
+        task_id = 1;
 #if USE_UT
         waitgroup_init( &wg );
 #elif USE_QTHREAD
@@ -81,15 +138,6 @@ public:
 #endif
     }
 
-    virtual void schedule()
-    {
-    }
-
-    virtual bool doesOneShot() const
-    {
-        return false;
-    }
-
 #if UT_FOUND
     virtual void globalInitialize()
     {
@@ -99,20 +147,6 @@ public:
     {
     }
 #endif
-
-    /* Task handlers */
-
-    virtual bool shouldExit( Task* task ) = 0;
-    virtual bool readyRun( Task* task ) = 0;
-
-    virtual void precompute( Task* task ) = 0;
-    virtual void postcompute( Task* task,
-                              const kstatus::value_t sig_status ) = 0;
-
-    virtual void reschedule( Task* task ) = 0;
-
-    virtual void prepare( Task* task ) = 0;
-    virtual void postexit( Task* task ) = 0;
 
 protected:
 
@@ -158,11 +192,24 @@ protected:
 #endif
     }
 
-    std::mutex tasks_mutex;
-    TaskListNode *tasks; /* the head of tasks linked list */
-    std::atomic< std::size_t > task_id = { 1 };
+    static void insert_task_node( TaskListNode *tnode )
+    {
+        while( ! tasks_mutex.try_lock() )
+        {
+            raft::yield();
+        }
+        /* insert into tasks linked list */
+        tnode->next = tasks->next;
+        tasks->next = tnode;
+        /** we got here, unlock **/
+        tasks_mutex.unlock();
+    }
+
+    static inline std::mutex tasks_mutex;
+    static inline TaskListNode *tasks; /* the head of tasks linked list */
+    static inline std::atomic< std::size_t > task_id;
 #if UT_FOUND
-    waitgroup_t wg;
+    static inline waitgroup_t wg;
 #endif
 
 }; /** end Schedule decl **/

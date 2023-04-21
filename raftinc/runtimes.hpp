@@ -111,9 +111,6 @@ using RuntimeNewOneShot = RuntimeTemp< PartitionBasic,
 using RuntimeNewBurst = RuntimeTemp< PartitionBasic,
                                      AllocateNew,
                                      ScheduleBurst >;
-using RuntimeNewPollingSource = RuntimeTemp< PartitionBasic,
-                                             AllocateNew,
-                                             SchedulePollingSource >;
 using RuntimeMix = RuntimeTemp< PartitionBasic,
                                 AllocateMix,
                                 ScheduleMix >;

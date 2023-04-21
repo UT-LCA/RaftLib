@@ -36,64 +36,70 @@
 
 namespace raft {
 
+/* forward declaration to make friends */
+class ScheduleMix;
+class ScheduleMixCV;
 
 class ScheduleBurst : public ScheduleOneShot
 {
+    typedef BurstTask OneShotTaskType;
 public:
     ScheduleBurst() : ScheduleOneShot()
     {
     }
     virtual ~ScheduleBurst() = default;
 
-    virtual bool shouldExit( Task* task ) override
+//#if UT_FOUND
+//    /* Note: copy of ScheduleOneShot::globalInitialize() */
+//    virtual void globalInitialize() override
+//    {
+//        slab_create( &oneshot_task_slab, "oneshottask",
+//                     sizeof( OneShotTaskType ), 0 );
+//        oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab,
+//                                                  TCACHE_DEFAULT_MAG_SIZE );
+//    }
+//#endif
+
+    static bool shouldExit( Task* task )
     {
         return task->stopped;
     }
 
-    virtual void postcompute( Task* task,
-                              const kstatus::value_t sig_status ) override
+    static void reschedule( Task* task )
     {
-        if( kstatus::stop == sig_status )
-        {
-            // indicate a source task should exit
-            auto *burst( static_cast< BurstTask* >( task ) );
-            burst->is_source = false; /* stop self_iterate() */
-        }
-    }
-
-    virtual void reschedule( Task* task ) override
-    {
-        self_iterate( task ); /* for source kernels to start a new iteration */
-        bool reloaded( (this)->feed_consumers( task ) );
-        if( ! reloaded )
+        if( ! ScheduleBurst::try_reload( task ) )
         {
             Singleton::allocate()->taskCommit( task );
             task->stopped = true;
         }
     }
 
-    virtual void postexit( Task* task ) override
+private:
+
+    /* Note: s/ScheduleOneShot/ScheduleBurst/g of
+     * ScheduleOneShot::start_tasks() */
+    virtual void start_tasks() override
     {
-#if USE_UT
-        waitgroup_done( task->wg );
-#else
-        *task->finished = true;
-#endif
+        auto &container( source_kernels );
+        for( auto * const k : container )
+        {
+            start_source_kernel_task< ScheduleBurst, OneShotTaskType >( k );
+        }
     }
 
-protected:
-
-    virtual bool feed_consumers( Task *task ) override
+    static inline bool try_reload( Task *task )
     {
-        if( 0 == task->kernel->output.size() )
-        {
-            return false;
-        }
-        auto *burst( static_cast< BurstTask* >( task ) );
-        int64_t gid = -1;
+        auto *burst( static_cast< OneShotTaskType* >( task ) );
+        auto *source_kernel_cpy( burst->is_source ? burst->kernel : nullptr );
+        bool reloaded( false );
+
 #if USE_QTHREAD
-        gid = burst->group_id;
+        int64_t gid = burst->group_id;
+#else
+        int64_t gid = -1;
 #endif
+
+        /* try feeding consumers */
         PortInfo *my_pi;
         DataRef ref;
         int selected = 0;
@@ -105,8 +111,8 @@ protected:
             if( ! is_last )
             {
                 //TODO: deal with a kernel depends on multiple producers
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             gid );
+                shot_kernel< ScheduleBurst, OneShotTaskType >(
+                        other_pi->my_kernel, other_pi->my_name, ref, gid );
             }
             else
             {
@@ -116,22 +122,31 @@ protected:
                 burst->kernel = other_pi->my_kernel;
                 Singleton::allocate()->taskInit( burst, true );
                 burst->stream_in->set( other_pi->my_name, ref );
-                return true;
+                reloaded = true;
+                break;
             }
         }
-        return false;
+
+        /*  we need to reiterate source kernel */
+        if( nullptr != source_kernel_cpy )
+        {
+            if( reloaded ) /* burst reloaded with a consumer already */
+            {
+                start_source_kernel_task< ScheduleBurst, OneShotTaskType >(
+                        source_kernel_cpy );
+            }
+            else /* burst free to reload with source_kernel */
+            {
+                reloaded = true;
+            }
+        }
+
+        return reloaded;
     }
 
-    virtual OneShotTask *new_an_oneshot() override
-    {
-#if USE_UT
-        auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
-        BurstTask *oneshot( new ( task_ptr_tmp ) BurstTask() );
-#else
-        BurstTask *oneshot( new BurstTask() );
-#endif
-        return oneshot;
-    }
+    friend ScheduleMix;
+    friend ScheduleMixCV;
+    /* allow them to reuse try_reload() */
 
 };
 

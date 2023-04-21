@@ -37,16 +37,20 @@
 
 namespace raft {
 
+/* forward declaration to make friends */
+class ScheduleMixCV;
 
 class ScheduleMix : public ScheduleBurst
 {
+    typedef PollingWorker WorkerTaskType;
+    typedef BurstTask OneShotTaskType;
 public:
     ScheduleMix() : ScheduleBurst()
     {
     }
     virtual ~ScheduleMix() = default;
 
-    virtual bool shouldExit( Task* task )
+    static bool shouldExit( Task* task )
     {
         if( ONE_SHOT != task->type &&
             ! Singleton::allocate()->taskHasInputPorts( task ) &&
@@ -57,7 +61,7 @@ public:
         return task->stopped;
     }
 
-    virtual void postcompute( Task* task, const kstatus::value_t sig_status )
+    static void postcompute( Task* task, const kstatus::value_t sig_status )
     {
         if( kstatus::stop == sig_status )
         {
@@ -68,58 +72,37 @@ public:
             }
             else
             {
-                auto *burst( static_cast< BurstTask* >( task ) );
+                auto *burst( static_cast< OneShotTaskType* >( task ) );
                 burst->is_source = false; /* stop self_iterate() */
             }
         }
     }
 
-    virtual void reschedule( Task* task )
+    static void reschedule( Task* task )
     {
         if( ONE_SHOT != task->type )
         {
-            auto *worker( static_cast< PollingWorker* >( task ) );
-            if( ! (this)->feed_consumers( worker ) )
+            auto *worker( static_cast< WorkerTaskType* >( task ) );
+            if( ! ScheduleMix::feed_consumers( worker ) )
             {
-                if( 64 <= ++worker->poll_count )
-                {
-                    worker->poll_count = 0;
-                    raft::yield();
-                }
+                ScheduleBasic::worker_yield( worker );
             }
             return;
         }
 
-        self_iterate( task ); /* for source kernels to start a new iteration */
-        bool reloaded( (this)->feed_consumers( task ) );
-        if( ! reloaded )
+        /* when ONE_SHOT == task->type, can simply downgrade to follow
+         * the path of ScheduleBurst */
+        auto *burst( static_cast< OneShotTaskType* >( task ) );
+        if( ! ScheduleBurst::try_reload( burst ) )
         {
             Singleton::allocate()->taskCommit( task );
             task->stopped = true;
         }
     }
 
-    virtual void postexit( Task* task )
-    {
-        if( ONE_SHOT != task->type )
-        {
-            Singleton::allocate()->invalidateOutputs( task );
-        }
-#if USE_UT
-        waitgroup_done( task->wg );
-#else
-        *task->finished = true;
-#endif
-    }
-
 protected:
 
-    virtual void start_tasks() override
-    {
-        ScheduleBasic::start_tasks();
-    }
-
-    virtual int get_nclones( Kernel * const kernel ) override
+    static inline int get_nclones( Kernel * const kernel )
     {
 #if IGNORE_HINT_0CLONE
         return std::max( 1, kernel->getCloneFactor() );
@@ -128,22 +111,40 @@ protected:
 #endif
     }
 
-    virtual bool feed_consumers( Task *task ) override
+private:
+
+    /* Note: s/ScheduleBasic/ScheduleMix/g of ScheduleBasic::start_tasks() */
+    virtual void start_tasks() override
     {
-        if( 0 == task->kernel->output.size() )
+        auto &container( kernels );
+#if USE_UT
+        std::size_t ntasks = 0;
+        for( auto * const k : container )
+        {
+            ntasks += ScheduleMix::get_nclones( k );
+        }
+        waitgroup_add( &wg, ntasks );
+#endif
+        for( auto * const k : container )
+        {
+            start_worker< ScheduleMix, WorkerTaskType >(
+                    k, ScheduleMix::get_nclones( k ) );
+        }
+    }
+
+    static inline bool feed_consumers( WorkerTaskType *worker )
+    {
+        if( 0 == worker->kernel->output.size() )
         {
             return false;
         }
-        int64_t gid = -1;
-#if USE_QTHREAD
-        //gid = burst->group_id;
-#endif
+
         PortInfo *my_pi;
         DataRef ref;
         int selected = 0;
         bool is_last = false;
         while( Singleton::allocate()->schedPop(
-                    task, my_pi, ref, &selected, &is_last ) )
+                    worker, my_pi, ref, &selected, &is_last ) )
         {
 #if IGNORE_HINT_0CLONE && IGNORE_HINT_FULLQ
             BUG(); /* when both hints ignored, should never spawn OneShot */
@@ -151,81 +152,46 @@ protected:
             auto *other_pi( my_pi->other_port );
             if( is_last )
             {
-                if( ONE_SHOT == task->type )
-                {
-                    /* reload the BurstTask with the consumer kernel */
-                    auto *burst( static_cast< BurstTask* >( task ) );
-                    Singleton::allocate()->taskCommit( burst );
-                    /* free up old stream_in/out before overwritten */
-                    burst->is_source = false;
-                    burst->kernel = other_pi->my_kernel;
-                    Singleton::allocate()->taskInit( burst, true );
-                    burst->stream_in->set( other_pi->my_name, ref );
-                    return true;
-                }
-#if FEED_CONSUMER_SHOT_DIRECT
+#if USE_UT && FEED_CONSUMER_SHOT_DIRECT
                 /* POLLING_WORKER/CONDVAR_WORKER, jump to new task directly */
-                shot_direct( other_pi, ref, gid );
+                ScheduleMix::shot_direct( other_pi, ref );
                 return true;
 #else
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             gid );
-                return false;
+                shot_kernel< ScheduleMix, OneShotTaskType> (
+                        other_pi->my_kernel, other_pi->my_name, ref, -1 );
+                break;
 #endif
             }
             else
             {
                 //TODO: deal with a kernel depends on multiple producers
-                shot_kernel( other_pi->my_kernel, other_pi->my_name, ref,
-                             gid );
+                shot_kernel< ScheduleMix, OneShotTaskType >(
+                        other_pi->my_kernel, other_pi->my_name, ref, -1 );
             }
         }
         return false;
     }
 
-    void shot_direct( const PortInfo *other_pi,
-                      DataRef &ref,
-                      int64_t gid )
+#if UT_FOUND
+    static inline void shot_direct( const PortInfo *other_pi,
+                                    DataRef &ref )
     {
-        auto *tnext( (this)->new_an_oneshot() );
-        tnext->is_source = false;
-        tnext->kernel = other_pi->my_kernel;
+        auto *oneshot( new_an_oneshot< OneShotTaskType >( other_pi->my_kernel,
+                                                          false ) );
 
-        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
+        Singleton::allocate()->taskInit( oneshot, true );
+        oneshot->stream_in->set( other_pi->my_name, ref );
 
-        Singleton::allocate()->taskInit( tnext, true );
-        tnext->stream_in->set( other_pi->my_name, ref );
-
-        run_oneshot_direct( tnext, gid );
-    }
-
-    void run_oneshot_direct( OneShotTask *oneshot, int64_t gid )
-    {
-        UNUSED( gid );
-#if USE_UT
         waitgroup_add( &wg, 1 );
         oneshot->wg = &wg;
         rt::Spawn( [ oneshot ]() {
-                oneshot->exe();
+                oneshot->exe< ScheduleMix >();
                 tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
                    /* swap = */ true );
-#else
-#if USE_QTHREAD
-        oneshot->group_id = gid;
-#endif
-        auto *tnode( new OneShotListNode( oneshot ) );
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tnode->next = tasks->next;
-        tasks->next = tnode;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
     }
+#endif
 
+    friend ScheduleMixCV; /* to allow to use feed_consumers() */
 };
 
 /**
@@ -237,43 +203,60 @@ protected:
  */
 class ScheduleMixCV : public ScheduleMix
 {
+    typedef CondVarWorker WorkerTaskType;
+    typedef BurstTask OneShotTaskType;
 public:
     ScheduleMixCV() : ScheduleMix()
     {
     }
     virtual ~ScheduleMixCV() = default;
 
-    virtual void prepare( Task *task ) override
+    static void prepare( Task *task )
     {
         Singleton::allocate()->registerConsumer( task );
     }
 
-    virtual void reschedule( Task *task ) override
+    static void reschedule( Task *task )
     {
         if( ONE_SHOT != task->type )
         {
-            auto *worker( static_cast< CondVarWorker* >( task ) );
-            if( ! (this)->feed_consumers( worker ) )
+            auto *worker( static_cast< WorkerTaskType* >( task ) );
+            if( ! ScheduleMix::feed_consumers( worker ) )
             {
-                worker->wait();
+                worker->wait< ScheduleMixCV >();
             }
             return;
         }
 
-        self_iterate( task ); /* for source kernels to start a new iteration */
-        bool reloaded( (this)->feed_consumers( task ) );
-        if( ! reloaded )
+        /* when ONE_SHOT == task->type, can simply downgrade to follow
+         * the path of ScheduleBurst */
+        auto *burst( static_cast< OneShotTaskType* >( task ) );
+        if( ! ScheduleBurst::try_reload( burst ) )
         {
             Singleton::allocate()->taskCommit( task );
             task->stopped = true;
         }
     }
 
-protected:
+private:
 
-    virtual PollingWorker *new_a_worker() override
+    /* Note: s/ScheduleBasic/ScheduleMixCV/g of ScheduleBasic::start_tasks() */
+    virtual void start_tasks() override
     {
-        return new CondVarWorker();
+        auto &container( kernels );
+#if USE_UT
+        std::size_t ntasks = 0;
+        for( auto * const k : container )
+        {
+            ntasks += ScheduleMixCV::get_nclones( k );
+        }
+        waitgroup_add( &wg, ntasks );
+#endif
+        for( auto * const k : container )
+        {
+            start_worker< ScheduleMixCV, WorkerTaskType >(
+                    k, ScheduleMixCV::get_nclones( k ) );
+        }
     }
 
 };

@@ -42,55 +42,15 @@
 
 namespace raft {
 
-struct StdThreadListNode : public TaskListNode
-{
-    StdThreadListNode( Task *the_task ) :
-        TaskListNode( the_task ),
-        th( [ & ](){ (this)->task->finished = &finished;
-                     (this)->task->exe(); } )
-    {
-    }
-
-    virtual ~StdThreadListNode()
-    {
-        th.join();
-        delete task;
-    }
-
-    std::thread th;
-};
-
-#if QTHREAD_FOUND
-struct QThreadListNode : public TaskListNode
-{
-    QThreadListNode( Task *the_task ) : TaskListNode( the_task )
-    {
-        (this)->task->finished = &finished;
-    }
-
-    virtual ~QThreadListNode()
-    {
-        delete task;
-    }
-
-    static aligned_t run( void *data )
-    {
-        auto * const worker( reinterpret_cast< Task* >( data ) );
-        worker->exe();
-        return 0;
-    }
-};
-#endif
-
 #if USE_QTHREAD
-using PollingWorkerListNode = struct QThreadListNode;
+using WorkerListNode = struct QThreadListNode;
 #else
-using PollingWorkerListNode = struct StdThreadListNode;
+using WorkerListNode = struct StdThreadListNode;
 #endif
-
 
 class ScheduleBasic : public Schedule
 {
+    typedef PollingWorker WorkerTaskType;
 public:
     ScheduleBasic() : Schedule()
     {
@@ -103,7 +63,7 @@ public:
      * kernels.  Implementation specific so it
      * is purely virtual.
      */
-    virtual void schedule( DAG &dag )
+    void schedule( DAG &dag )
     {
         kernels = dag.getKernels();
         source_kernels = dag.getSourceKernels();
@@ -123,6 +83,7 @@ public:
             raft::yield();
         }
 
+        /* where diverge to each scheduler's own start_task() implementation */
         (this)->start_tasks();
 
         wait_tasks_finish();
@@ -131,7 +92,7 @@ public:
     }
 
 
-    virtual bool shouldExit( Task* task )
+    static bool shouldExit( Task* task )
     {
         if( ! Singleton::allocate()->taskHasInputPorts( task ) &&
             ! Singleton::allocate()->dataInReady( task, null_port_value ) )
@@ -142,19 +103,19 @@ public:
     }
 
 
-    virtual bool readyRun( Task* task )
+    static bool readyRun( Task* task )
     {
         return Singleton::allocate()->dataInReady( task, null_port_value );
     }
 
 
-    virtual void precompute( Task* task )
+    static void precompute( Task* task )
     {
         //std::cout << task->id << std::endl;
     }
 
 
-    virtual void postcompute( Task* task, const kstatus::value_t sig_status )
+    static void postcompute( Task* task, const kstatus::value_t sig_status )
     {
         //Singleton::allocate()->taskCommit( task );
         if( kstatus::stop == sig_status )
@@ -164,23 +125,24 @@ public:
         }
     }
 
-    virtual void reschedule( Task* task )
+    static void reschedule( Task* task )
     {
-        auto *worker( static_cast< PollingWorker* >( task ) );
-        if( 64 <= ++worker->poll_count )
+        /* NOTE: Every scheduler should shadow this method with their own
+         * implementation */
+        auto *worker( static_cast< WorkerTaskType* >( task ) );
+        ScheduleBasic::worker_yield( worker );
+    }
+
+    static void prepare( Task* task )
+    {
+    }
+
+    static void postexit( Task* task )
+    {
+        if( ONE_SHOT != task->type )
         {
-            worker->poll_count = 0;
-            raft::yield();
+            Singleton::allocate()->invalidateOutputs( task );
         }
-    }
-
-    virtual void prepare( Task* task )
-    {
-    }
-
-    virtual void postexit( Task* task )
-    {
-        Singleton::allocate()->invalidateOutputs( task );
 #if USE_UT
         waitgroup_done( task->wg );
 #else
@@ -189,6 +151,59 @@ public:
     }
 
 protected:
+
+    static inline void worker_yield( WorkerTaskType *worker )
+    {
+        if( 64 <= ++worker->poll_count )
+        {
+            worker->poll_count = 0;
+            raft::yield();
+        }
+    }
+
+    static inline int get_nclones( Kernel * const kernel )
+    {
+        return std::max( 1, kernel->getCloneFactor() );
+    }
+
+    template< class SCHEDULER, class WORKERTYPE >
+    static inline void start_worker( Kernel * const kernel, const int nclones )
+    {
+        std::size_t worker_id =
+            task_id.fetch_add( nclones, std::memory_order_relaxed );
+        for( int i( 0 ); nclones > i; ++i )
+        {
+            auto *worker( new WORKERTYPE() );
+            worker->kernel = kernel;
+            worker->id = worker_id + i;
+            worker->clone_id = i;
+
+            Singleton::allocate()->taskInit( worker );
+
+            /* now run the worker in a thread */
+            int64_t gid( worker->clone_id + worker->kernel->getGroup() );
+#if USE_UT
+            worker->wg = &wg;
+            rt::Spawn( [ worker ](){ worker->template exe< SCHEDULER >();
+                                     delete worker; },
+                       false, gid );
+#else
+            auto *tnode( new WorkerListNode(
+                        ( SCHEDULER* )nullptr, worker, gid ) );
+            /* ( SCHEDULER* )nullptr is just to enable parameter deduction */
+            insert_task_node( tnode );
+#endif
+        }
+
+        return;
+    }
+
+    /** kernel set **/
+    kernelset_t kernels;
+    kernelset_t source_kernels;
+    kernelset_t sink_kernels;
+
+private:
 
 #if USE_UT
     static void static_wrapper( void *arg )
@@ -205,90 +220,15 @@ protected:
         std::size_t ntasks = 0;
         for( auto * const k : container )
         {
-            ntasks += (this)->get_nclones( k );
+            ntasks += ScheduleBasic::get_nclones( k );
         }
         waitgroup_add( &wg, ntasks );
 #endif
         for( auto * const k : container )
         {
-            (this)->start_polling_worker( k );
+            start_worker< ScheduleBasic, WorkerTaskType >(
+                    k, ScheduleBasic::get_nclones( k ) );
         }
-    }
-
-    virtual void start_polling_worker( Kernel * const kernel )
-    {
-        const int nclones = (this)->get_nclones( kernel );
-
-        std::size_t worker_id = task_id.fetch_add(
-                nclones, std::memory_order_relaxed );
-        for( int i( 0 ); nclones > i; ++i )
-        {
-            PollingWorker *task ( new_a_worker() );
-            task->kernel = kernel;
-            task->id = worker_id + i;
-            task->clone_id = i;
-
-            //assert( Singleton::allocate()->isReady() );
-            Singleton::allocate()->taskInit( task );
-
-            run_worker( task );
-        }
-
-        return;
-    }
-
-    virtual int get_nclones( Kernel * const kernel )
-    {
-        return std::max( 1, kernel->getCloneFactor() );
-    }
-
-    /**
-     * new_a_worker - simply get the pointer to a new PollingWorker instance
-     * made this a virtual methid in protected section in order to allow
-     * ScheduleCV to substitue it with a CondVarWorker instance
-     * @return PollingWorker*
-     */
-    virtual PollingWorker *new_a_worker()
-    {
-        return new PollingWorker();
-    }
-
-    /** kernel set **/
-    kernelset_t kernels;
-    kernelset_t source_kernels;
-    kernelset_t sink_kernels;
-
-private:
-
-    inline void run_worker( Task *task )
-    {
-        auto *worker( static_cast< PollingWorker* >( task ) );
-#if USE_UT
-        task->wg = &wg;
-        rt::Spawn( [ task ](){ task->exe(); delete task; }, false,
-                   ( worker->clone_id + task->kernel->getGroup() ) );
-#else
-        auto *tnode( new PollingWorkerListNode( task ) );
-#if USE_QTHREAD
-        qthread_spawn( QThreadListNode::run,
-                       ( void* ) task,
-                       0,
-                       0,
-                       0,
-                       nullptr,
-                       worker->clone_id + task->kernel->getGroup(),
-                       0 );
-#endif
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tnode->next = tasks->next;
-        tasks->next = tnode;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
     }
 
 };
@@ -302,28 +242,43 @@ private:
  */
 class ScheduleCV : public ScheduleBasic
 {
+    typedef CondVarWorker WorkerTaskType;
 public:
     ScheduleCV() : ScheduleBasic()
     {
     }
     virtual ~ScheduleCV() = default;
 
-    virtual void prepare( Task *task ) override
+    static void prepare( Task *task )
     {
         Singleton::allocate()->registerConsumer( task );
     }
 
-    virtual void reschedule( Task *task ) override
+    static void reschedule( Task *task )
     {
-        auto *worker( static_cast< CondVarWorker* >( task ) );
-        worker->wait();
+        auto *worker( static_cast< WorkerTaskType* >( task ) );
+        worker->wait< ScheduleCV >();
     }
 
-protected:
+private:
 
-    virtual PollingWorker *new_a_worker() override
+    /* Note: s/ScheduleBasic/ScheduleCV/g of ScheduleBasic::start_tasks() */
+    virtual void start_tasks() override
     {
-        return new CondVarWorker();
+        auto &container( kernels );
+#if USE_UT
+        std::size_t ntasks = 0;
+        for( auto * const k : container )
+        {
+            ntasks += ScheduleCV::get_nclones( k );
+        }
+        waitgroup_add( &wg, ntasks );
+#endif
+        for( auto * const k : container )
+        {
+            start_worker< ScheduleCV, WorkerTaskType >(
+                    k, ScheduleCV::get_nclones( k ) );
+        }
     }
 
 };

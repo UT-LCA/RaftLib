@@ -217,7 +217,7 @@ public:
         FIFOFunctor *functor;
         FIFO *fifo;
         auto *tmeta( cast_meta( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo );
+        tmeta->getPairOut( functor, fifo, selected );
         functor->push( fifo, item );
         tmeta->nextFIFO( selected );
     }
@@ -227,7 +227,7 @@ public:
         FIFOFunctor *functor;
         FIFO *fifo;
         auto *tmeta( cast_meta( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo );
+        tmeta->getPairOut( functor, fifo, selected );
         return functor->allocate( fifo );
     }
 
@@ -236,7 +236,7 @@ public:
         FIFOFunctor *functor;
         FIFO *fifo;
         auto *tmeta( cast_meta( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo );
+        tmeta->getPairOut( functor, fifo, selected );
         functor->send( fifo );
         tmeta->nextFIFO( selected );
     }
@@ -328,7 +328,7 @@ public:
         FIFOFunctor *functor;
         FIFO *fifo;
         auto *tmeta( cast_meta( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo );
+        tmeta->getPairOut( functor, fifo, selected );
         functor->push( fifo, item );
         // wake up the worker waiting for data
         tmeta->wakeupConsumer();
@@ -340,7 +340,7 @@ public:
         FIFOFunctor *functor;
         FIFO *fifo;
         auto *tmeta( cast_meta( task->alloc_meta ) );
-        tmeta->getPairOut( functor, fifo );
+        tmeta->getPairOut( functor, fifo, selected );
         functor->send( fifo );
         // wake up the worker waiting for data
         tmeta->wakeupConsumer();

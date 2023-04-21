@@ -48,22 +48,19 @@ using OneShotListNode = struct StdThreadListNode;
 
 class ScheduleOneShot : public ScheduleBasic
 {
+    typedef OneShotTask OneShotTaskType;
 public:
     ScheduleOneShot() : ScheduleBasic()
     {
+        src_id = 0;
     }
     virtual ~ScheduleOneShot() = default;
-
-    virtual bool doesOneShot() const override
-    {
-        return true;
-    }
 
 #if UT_FOUND
     virtual void globalInitialize() override
     {
         slab_create( &oneshot_task_slab, "oneshottask",
-                     sizeof( OneShotTask ), 0 );
+                     sizeof( OneShotTaskType ), 0 );
         oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab,
                                                   TCACHE_DEFAULT_MAG_SIZE );
     }
@@ -75,21 +72,22 @@ public:
     }
 #endif
 
-    virtual void postcompute( Task* task,
-                              const kstatus::value_t sig_status ) override
+    static void postcompute( Task* task, const kstatus::value_t sig_status )
     {
         if( kstatus::stop == sig_status )
         {
             // indicate a source task should exit
-            auto *oneshot( static_cast< OneShotTask* >( task ) );
+            auto *oneshot( static_cast< OneShotTaskType* >( task ) );
             oneshot->is_source = false; /* stop self_iterate() */
         }
     }
 
-    virtual void reschedule( Task* task ) override
+    static void reschedule( Task* task )
     {
-        self_iterate( task ); /* for source kernels to start a new iteration */
-        feed_consumers( task );
+        /* for source kernels to start a new iteration */
+        ScheduleOneShot::self_iterate( task );
+        /* for consumer kernels run as tasks */
+        ScheduleOneShot::feed_consumers( task );
         Singleton::allocate()->taskCommit( task );
 #if USE_UT
         waitgroup_done( task->wg );
@@ -101,44 +99,122 @@ public:
 
 protected:
 
-    virtual void start_tasks() override
+    template< class ONESHOTTYPE >
+    static inline ONESHOTTYPE *new_an_oneshot( Kernel *kernel, bool is_source )
     {
-        auto &container( source_kernels );
-        for( auto * const k : container )
-        {
-            (this)->start_source_kernel_task( k );
-        }
+#if USE_UT
+        auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
+        auto *oneshot( new ( task_ptr_tmp ) ONESHOTTYPE() );
+#else
+        auto *oneshot( new ONESHOTTYPE() );
+#endif
+        oneshot->kernel = kernel;
+        oneshot->is_source = is_source;
+
+        oneshot->id = task_id.fetch_add( 1, std::memory_order_relaxed );
+
+        return oneshot;
     }
 
-    virtual void start_source_kernel_task( Kernel *kernel )
+    template< class SCHEDULER, class ONESHOTTYPE >
+    static inline void run_oneshot( ONESHOTTYPE *oneshot, int64_t gid )
     {
-        auto *task( (this)->new_an_oneshot() );
-        task->is_source = true;
-        task->kernel = kernel;
+#if USE_QTHREAD
+        oneshot->group_id =
+            ( 0 <= gid ) ? oneshot->group_id : oneshot->kernel->getGroup();
+#endif
 
-        int64_t gid = -1;
-        task->id = task_id.fetch_add( 1, std::memory_order_relaxed );
+#if USE_UT
+        waitgroup_add( &wg, 1 );
+        oneshot->wg = &wg;
+        rt::Spawn( [ oneshot ]() {
+                oneshot->template exe< SCHEDULER >();
+                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
+                false, gid );
+#else
+        auto *tnode( new OneShotListNode(
+                    ( SCHEDULER* )nullptr, oneshot, gid ) );
+        insert_task_node( tnode );
+#endif
+    }
+
+    template< class SCHEDULER, class ONESHOTTYPE >
+    static inline void start_source_kernel_task( Kernel *kernel )
+    {
+        auto *task( new_an_oneshot< ONESHOTTYPE >( kernel, true ) );
+
 #if USE_UT || USE_QTHREAD
-        gid = src_id.fetch_add( 1, std::memory_order_relaxed );
+        int64_t gid = src_id.fetch_add( 1, std::memory_order_relaxed );
+#else
+        int64_t gid = -1;
 #endif
 
         /* allocate the output buffer */
         Singleton::allocate()->taskInit( task );
 
-        run_oneshot( task, gid );
+        /* run the OneShotTask in a thread */
+        run_oneshot< SCHEDULER, ONESHOTTYPE >( task, gid );
 
         return;
     }
 
-    virtual bool feed_consumers( Task *task )
+    template< class SCHEDULER, class ONESHOTTYPE >
+    static inline void shot_kernel( Kernel *kernel,
+                                    const port_key_t &dst_name,
+                                    DataRef &ref,
+                                    int64_t gid )
+    {
+        auto *tnext( new_an_oneshot< ONESHOTTYPE >( kernel, false ) );
+
+        /* allocate the output buffer */
+        Singleton::allocate()->taskInit( tnext, /* alloc_input = */ true );
+        assert( nullptr != tnext->stream_in );
+        /* set the input */
+        tnext->stream_in->set( dst_name, ref );
+
+        /* run the OneShotTask in a thread */
+        run_oneshot< SCHEDULER, ONESHOTTYPE >( tnext, gid );
+
+        return;
+    }
+
+    static inline std::atomic< int64_t > src_id;
+#if UT_FOUND
+    struct slab oneshot_task_slab;
+    struct tcache *oneshot_task_tcache;
+#endif
+
+private:
+
+    virtual void start_tasks() override
+    {
+        auto &container( source_kernels );
+        for( auto * const k : container )
+        {
+            start_source_kernel_task< ScheduleOneShot, OneShotTaskType >( k );
+        }
+    }
+
+    static inline void self_iterate( Task *task )
+    {
+        auto *oneshot( static_cast< OneShotTaskType* >( task ) );
+        if( ! oneshot->is_source )
+        {
+            return;
+        }
+        start_source_kernel_task< ScheduleOneShot,
+                                  OneShotTaskType >( task->kernel );
+    }
+
+    static inline bool feed_consumers( Task *task )
     {
         if( 0 == task->kernel->output.size() )
         {
             return false;
         }
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
         int64_t gid = -1;
 #if USE_QTHREAD
+        auto *oneshot( static_cast< OneShotTaskType* >( task ) );
         gid = oneshot->group_id;
 #endif
         PortInfo *my_pi;
@@ -148,134 +224,10 @@ protected:
         {
             auto *other_pi( my_pi->other_port );
             //TODO: deal with a kernel depends on multiple producers
-            shot_kernel( other_pi->my_kernel, other_pi->my_name, ref, gid );
-        }
-        auto *stream_out( oneshot->stream_out );
-        if( stream_out->is1Piece() )
-        {
-            if( stream_out->isSingle() )
-            {
-                if( stream_out->isSent() )
-                {
-                    my_pi = &oneshot->kernel->output.begin()->second;
-                    const auto *other_pi( my_pi->other_port );
-                    shot_kernel( other_pi->my_kernel, oneshot->stream_out,
-                                 gid );
-                    oneshot->stream_out = nullptr;
-                }
-            }
-            else
-            {
-                for( auto &p : oneshot->stream_out->getUsed() )
-                {
-                    const auto *other_pi(
-                            oneshot->kernel->output[ p.first ].other_port );
-                    shot_kernel( other_pi->my_kernel, other_pi->my_name,
-                                 p.second, gid );
-                }
-            }
+            shot_kernel< ScheduleOneShot, OneShotTaskType >(
+                    other_pi->my_kernel, other_pi->my_name, ref, gid );
         }
         return false;
-    }
-
-    virtual void self_iterate( Task *task )
-    {
-        auto *oneshot( static_cast< OneShotTask* >( task ) );
-        if( ! oneshot->is_source )
-        {
-            return;
-        }
-        start_source_kernel_task( task->kernel );
-    }
-
-    virtual void shot_kernel( Kernel *kernel,
-                              StreamingData *src_sd,
-                              int64_t gid )
-    {
-        auto *tnext( (this)->new_an_oneshot() );
-        tnext->is_source = false;
-        tnext->kernel = kernel;
-
-        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
-
-        Singleton::allocate()->taskInit( tnext );
-        tnext->stream_in = src_sd->out2in1piece( tnext );
-
-        run_oneshot( tnext, gid );
-    }
-
-    virtual void shot_kernel( Kernel *kernel,
-                              const port_key_t &dst_name,
-                              DataRef &ref,
-                              int64_t gid )
-    {
-        auto *tnext( (this)->new_an_oneshot() );
-        tnext->is_source = false;
-        tnext->kernel = kernel;
-
-        tnext->id = task_id.fetch_add( 1, std::memory_order_relaxed );
-
-        Singleton::allocate()->taskInit( tnext, true );
-        tnext->stream_in->set( dst_name, ref );
-
-        run_oneshot( tnext, gid );
-    }
-
-    std::atomic< int64_t > src_id = { 0 };
-#if UT_FOUND
-    struct slab oneshot_task_slab;
-    struct tcache *oneshot_task_tcache;
-#endif
-
-    virtual OneShotTask *new_an_oneshot()
-    {
-#if USE_UT
-        auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
-        OneShotTask *oneshot( new ( task_ptr_tmp ) OneShotTask() );
-#else
-        OneShotTask *oneshot( new OneShotTask() );
-#endif
-        return oneshot;
-    }
-
-    virtual void run_oneshot( OneShotTask *oneshot, int64_t gid )
-    {
-#if USE_QTHREAD
-        oneshot->group_id =
-            ( 0 <= gid ) ? oneshot->group_id : oneshot->kernel->getGroup();
-#else
-        UNUSED( gid );
-#endif
-#if USE_UT
-        waitgroup_add( &wg, 1 );
-        oneshot->wg = &wg;
-        rt::Spawn( [ oneshot ]() {
-                oneshot->exe();
-                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
-                false,
-                gid );
-#else
-        auto *tnode( new OneShotListNode( oneshot ) );
-#if USE_QTHREAD
-        qthread_spawn( QThreadListNode::run,
-                       ( void* ) static_cast< Task* >( oneshot ),
-                       0,
-                       0,
-                       0,
-                       nullptr,
-                       oneshot->group_id,
-                       0 );
-#endif
-        while( ! tasks_mutex.try_lock() )
-        {
-            raft::yield();
-        }
-        /* insert into tasks linked list */
-        tnode->next = tasks->next;
-        tasks->next = tnode;
-        /** we got here, unlock **/
-        tasks_mutex.unlock();
-#endif
     }
 
 };

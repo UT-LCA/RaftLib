@@ -127,7 +127,6 @@ struct RRWorkerMixAllocMeta : public TaskMixAllocMeta
     /* getPairOut - get the functor and fifo of currently selected output port
      * @param functor - FIFOFunctor *&
      * @param fifo - FIFO *&
-     * @param selected - int
      * @return bool - true if output FIFO valid
      */
     bool getPairOut( FIFOFunctor *&functor,

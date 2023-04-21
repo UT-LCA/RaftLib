@@ -236,7 +236,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             else /* outputs could be all 0 clone */
             {
                 fifos_out = nullptr;
-                port_out_selected = nullptr;
+                port_out_selected = ports_out_info[ 0 ];
                 idx_out_selected = 0;
             }
         }
@@ -496,8 +496,10 @@ struct RRTaskFIFOAllocMeta : public TaskFIFOAllocMeta
      * @return bool - true if output FIFO valid
      */
     bool getPairOut( FIFOFunctor *&functor,
-                     FIFO *&fifo )
+                     FIFO *&fifo,
+                     int selected )
     {
+        UNUSED( selected );
         fifo = fifos_out[ idx_out_selected ];
         functor = port_out_selected->runtime_info.fifo_functor;
         return true;
@@ -530,11 +532,9 @@ struct GreedyTaskFIFOAllocMeta : public TaskFIFOAllocMeta
 
     bool getPairOut( FIFOFunctor *&functor,
                      FIFO *&fifo,
-                     int selected,
-                     bool is_oneshot = false )
+                     int selected )
     {
-        UNUSED( is_oneshot );
-        functor = ports_out_info[ selected ]->runtime_info.fifo_functor;
+        functor = port_out_selected->runtime_info.fifo_functor;
         for( auto idx( idxs_out[ ( selected << 1 ) + 1 ] );
              idxs_out[ ( selected << 1 ) + 3 ] > idx; idx++ )
         {

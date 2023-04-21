@@ -47,13 +47,14 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) OneShotTask : public TaskImpl
 
     virtual ~OneShotTask() = default;
 
-    virtual kstatus::value_t exe()
+    template< class SCHEDULER >
+    kstatus::value_t exe()
     {
-        Singleton::schedule()->precompute( this );
+        SCHEDULER::precompute( this );
         const auto sig_status(
                 (this)->kernel->compute( *stream_in, *stream_out ) );
-        Singleton::schedule()->postcompute( this, sig_status );
-        Singleton::schedule()->reschedule( this );
+        SCHEDULER::postcompute( this, sig_status );
+        SCHEDULER::reschedule( this );
         return kstatus::stop;
     }
 };
@@ -68,17 +69,18 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) BurstTask : public OneShotTask
 
     virtual ~BurstTask() = default;
 
-    virtual kstatus::value_t exe()
+    template< class SCHEDULER >
+    kstatus::value_t exe()
     {
-        while( ! Singleton::schedule()->shouldExit( this ) )
+        while( ! SCHEDULER::shouldExit( this ) )
         {
-            Singleton::schedule()->precompute( this );
+            SCHEDULER::precompute( this );
             const auto sig_status(
                     (this)->kernel->compute( *stream_in, *stream_out ) );
-            Singleton::schedule()->postcompute( this, sig_status );
-            Singleton::schedule()->reschedule( this ); /* kind reload */
+            SCHEDULER::postcompute( this, sig_status );
+            SCHEDULER::reschedule( this ); /* kind reload */
         }
-        Singleton::schedule()->postexit( this );
+        SCHEDULER::postexit( this );
         return kstatus::stop;
     }
 };

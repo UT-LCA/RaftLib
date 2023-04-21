@@ -134,10 +134,6 @@ public:
 #if UT_FOUND
     virtual void globalInitialize()
     {
-        if( ! Singleton::schedule()->doesOneShot() )
-        {
-            return;
-        }
         slab_create( &streaming_data_slab, "streamingdata",
                      sizeof( StreamingData ), 0 );
         streaming_data_tcache = slab_create_tcache( &streaming_data_slab, 64 );
@@ -148,10 +144,6 @@ public:
 
     virtual void perthreadInitialize()
     {
-        if( ! Singleton::schedule()->doesOneShot() )
-        {
-            return;
-        }
         tcache_init_perthread( streaming_data_tcache,
                                &__perthread_streaming_data_pt );
         tcache_init_perthread( mix_alloc_meta_tcache,
@@ -203,7 +195,10 @@ public:
 
     virtual void invalidateOutputs( Task *task )
     {
-        assert( ONE_SHOT != task->type );
+        if( ONE_SHOT == task->type )
+        {
+            return;
+        }
         auto *tmeta( cast_worker_meta( task->alloc_meta ) );
         tmeta->invalidateOutputs();
     }

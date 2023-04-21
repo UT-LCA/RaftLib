@@ -128,8 +128,8 @@ main()
 
     s.reset();
     l.reset();
-    std::cout << "RuntimeNewPollingSource\n";
-    dag.exe< raft::RuntimeNewPollingSource >();
+    std::cout << "RuntimeNewBurst\n";
+    dag.exe< raft::RuntimeNewBurst >();
 
     s.reset();
     l.reset();
