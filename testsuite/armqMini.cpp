@@ -108,8 +108,8 @@ main()
 
     s.reset();
     l.reset();
-    std::cout << "RuntimeFIFOGroup\n";
-    dag.exe< raft::RuntimeFIFOGroup >();
+    std::cout << "RuntimeGroupFIFO\n";
+    dag.exe< raft::RuntimeGroupFIFO >();
 
     s.reset();
     l.reset();
@@ -118,8 +118,8 @@ main()
 
     s.reset();
     l.reset();
-    std::cout << "RuntimeFIFOGroupCV\n";
-    dag.exe< raft::RuntimeFIFOGroupCV >();
+    std::cout << "RuntimeGroupFIFOCV\n";
+    dag.exe< raft::RuntimeGroupFIFOCV >();
 
     s.reset();
     l.reset();
@@ -128,8 +128,18 @@ main()
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeGroupNewOneShot\n";
+    dag.exe< raft::RuntimeGroupNewOneShot >();
+
+    s.reset();
+    l.reset();
     std::cout << "RuntimeNewBurst\n";
     dag.exe< raft::RuntimeNewBurst >();
+
+    s.reset();
+    l.reset();
+    std::cout << "RuntimeGroupNewBurst\n";
+    dag.exe< raft::RuntimeGroupNewBurst >();
 
     s.reset();
     l.reset();
@@ -138,8 +148,18 @@ main()
 
     s.reset();
     l.reset();
+    std::cout << "RuntimeGroupMix\n";
+    dag.exe< raft::RuntimeGroupMix >();
+
+    s.reset();
+    l.reset();
     std::cout << "RuntimeMixCV\n";
     dag.exe< raft::RuntimeMixCV >();
+
+    s.reset();
+    l.reset();
+    std::cout << "RuntimeGroupMixCV\n";
+    dag.exe< raft::RuntimeGroupMixCV >();
 
     return( EXIT_SUCCESS );
 }

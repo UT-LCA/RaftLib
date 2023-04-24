@@ -69,7 +69,7 @@ public:
             /* each fifos array has a terminator, nullptr */
             while( nullptr != fifos[ idx ] )
             {
-#if DUMP_FIFO_STATS
+#if ARMQ_DUMP_FIFO_STATS
                 Buffer::Blocked rstat, wstat;
                 fifos[ idx ]->get_zero_read_stats( rstat );
                 fifos[ idx ]->get_zero_write_stats( wstat );
@@ -91,7 +91,7 @@ public:
         auto func = [ & ]( PortInfo &a, PortInfo &b, void *data )
         {
             const int nfifos = std::lcm(
-#if IGNORE_HINT_0CLONE
+#if ARMQ_NO_HINT_0CLONE
                     std::max( 1, a.my_kernel->getCloneFactor() ),
                     std::max( 1, b.my_kernel->getCloneFactor() )
 #else
@@ -297,9 +297,10 @@ public:
             else
             {
                 tmeta->pushOutBuf( item, selected );
-#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+#if ! ARMQ_NO_HINT && ARMQ_DUMP_FIFO_STATS
                 tmeta->oneshotCnt();
 #endif
+                tmeta->nextFIFO( selected );
             }
         }
     }
@@ -322,9 +323,10 @@ public:
             }
             else
             {
-#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+#if ! ARMQ_NO_HINT && ARMQ_DUMP_FIFO_STATS
                 tmeta->oneshotCnt();
 #endif
+                tmeta->nextFIFO( selected );
                 return tmeta->allocateOutBuf( selected );
             }
         }

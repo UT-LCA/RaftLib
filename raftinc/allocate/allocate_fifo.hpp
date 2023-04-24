@@ -84,7 +84,7 @@ public:
             /* each fifos array has a terminator, nullptr */
             while( nullptr != fifos[ idx ] )
             {
-#if DUMP_FIFO_STATS
+#if ARMQ_DUMP_FIFO_STATS
                 Buffer::Blocked rstat, wstat;
                 fifos[ idx ]->get_zero_read_stats( rstat );
                 fifos[ idx ]->get_zero_write_stats( wstat );
@@ -264,7 +264,7 @@ public:
 
 protected:
 
-#if RAFT_GREEDY_FIFO_SELECTION
+#if ARMQ_GREEDY_FIFO_SELECTION
     typedef GreedyTaskFIFOAllocMeta WorkerFIFOAllocMeta;
 #else
     typedef RRTaskFIFOAllocMeta WorkerFIFOAllocMeta;

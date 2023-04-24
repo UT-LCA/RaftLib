@@ -96,27 +96,39 @@ protected:
 using RuntimeFIFO = RuntimeTemp< PartitionBasic,
                                  AllocateFIFO,
                                  ScheduleBasic >;
-using RuntimeFIFOGroup = RuntimeTemp< PartitionPriority,
+using RuntimeGroupFIFO = RuntimeTemp< PartitionPriority,
                                       AllocateFIFO,
                                       ScheduleBasic >;
 using RuntimeFIFOCV = RuntimeTemp< PartitionBasic,
                                    AllocateFIFOCV,
                                    ScheduleCV >;
-using RuntimeFIFOGroupCV = RuntimeTemp< PartitionPriority,
-                                       AllocateFIFOCV,
-                                       ScheduleCV >;
+using RuntimeGroupFIFOCV = RuntimeTemp< PartitionPriority,
+                                        AllocateFIFOCV,
+                                        ScheduleCV >;
 using RuntimeNewOneShot = RuntimeTemp< PartitionBasic,
                                        AllocateNew,
                                        ScheduleOneShot >;
+using RuntimeGroupNewOneShot = RuntimeTemp< PartitionPriority,
+                                            AllocateNew,
+                                            ScheduleOneShot >;
 using RuntimeNewBurst = RuntimeTemp< PartitionBasic,
                                      AllocateNew,
                                      ScheduleBurst >;
+using RuntimeGroupNewBurst = RuntimeTemp< PartitionPriority,
+                                          AllocateNew,
+                                          ScheduleBurst >;
 using RuntimeMix = RuntimeTemp< PartitionBasic,
                                 AllocateMix,
                                 ScheduleMix >;
+using RuntimeGroupMix = RuntimeTemp< PartitionPriority,
+                                     AllocateMix,
+                                     ScheduleMix >;
 using RuntimeMixCV = RuntimeTemp< PartitionBasic,
                                   AllocateMixCV,
                                   ScheduleMixCV >;
+using RuntimeGroupMixCV = RuntimeTemp< PartitionPriority,
+                                       AllocateMixCV,
+                                       ScheduleMixCV >;
 
 } /** end namespace raft **/
 

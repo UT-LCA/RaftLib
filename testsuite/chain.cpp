@@ -65,7 +65,7 @@
    raft::DAG dag;
    dag += g >> ( s >> print );
 
-   dag.exe< raft::RuntimeFIFOGroup >();
+   dag.exe< raft::RuntimeGroupFIFO >();
 
    return( EXIT_SUCCESS );
  }

@@ -121,7 +121,11 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
     void wakeup()
     {
 #if USE_UT
+#if ARMQ_NO_INSTANT_SWAP
         cv.Signal();
+#else
+        cv.SignalSwap();
+#endif
 #else
         cv.notify_one();
 #endif

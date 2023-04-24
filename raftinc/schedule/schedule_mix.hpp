@@ -104,7 +104,7 @@ protected:
 
     static inline int get_nclones( Kernel * const kernel )
     {
-#if IGNORE_HINT_0CLONE
+#if ARMQ_NO_HINT_0CLONE
         return std::max( 1, kernel->getCloneFactor() );
 #else
         return kernel->getCloneFactor();
@@ -146,13 +146,13 @@ private:
         while( Singleton::allocate()->schedPop(
                     worker, my_pi, ref, &selected, &is_last ) )
         {
-#if IGNORE_HINT_0CLONE && IGNORE_HINT_FULLQ
+#if ARMQ_NO_HINT_0CLONE && ARMQ_NO_HINT_FULLQ
             BUG(); /* when both hints ignored, should never spawn OneShot */
 #endif
             auto *other_pi( my_pi->other_port );
             if( is_last )
             {
-#if USE_UT && FEED_CONSUMER_SHOT_DIRECT
+#if USE_UT && ! ARMQ_NO_INSTANT_SWAP
                 /* POLLING_WORKER/CONDVAR_WORKER, jump to new task directly */
                 ScheduleMix::shot_direct( other_pi, ref );
                 return true;

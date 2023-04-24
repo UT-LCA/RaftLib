@@ -35,7 +35,7 @@
 #include "raftinc/allocate/allocate_new.hpp"
 #include "raftinc/allocate/functors.hpp"
 
-#define IGNORE_ALL_HINTS ( IGNORE_HINT_FULLQ && IGNORE_HINT_0CLONE )
+#define ARMQ_NO_HINT ( ARMQ_NO_HINT_FULLQ && ARMQ_NO_HINT_0CLONE )
 
 namespace raft
 {
@@ -115,7 +115,7 @@ struct TaskMixAllocMeta : public TaskFIFOAllocMeta, public BufListMetaAddOn
     TaskMixAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
         TaskFIFOAllocMeta( meta, rr_idx ), BufListMetaAddOn( meta )
     {
-#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+#if ! ARMQ_NO_HINT && ARMQ_DUMP_FIFO_STATS
         auto nfifos_out( nfifosOut() );
         if( 0 < nfifos_out )
         {
@@ -130,7 +130,7 @@ struct TaskMixAllocMeta : public TaskFIFOAllocMeta, public BufListMetaAddOn
 
     virtual ~TaskMixAllocMeta()
     {
-#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+#if ! ARMQ_NO_HINT && ARMQ_DUMP_FIFO_STATS
         if( nullptr != oneshot_cnts )
         {
             int nfifos_out( nfifosOut() );
@@ -146,7 +146,7 @@ struct TaskMixAllocMeta : public TaskFIFOAllocMeta, public BufListMetaAddOn
     }
 
     using TaskFIFOAllocMeta::kmeta;
-#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+#if ! ARMQ_NO_HINT && ARMQ_DUMP_FIFO_STATS
     uint64_t *oneshot_cnts;
 
     void oneshotCnt()
@@ -174,8 +174,7 @@ struct RRWorkerMixAllocMeta : public TaskMixAllocMeta
     bool getPairOut( FIFOFunctor *&functor,
                      FIFO *&fifo )
     {
-#if IGNORE_HINT_0CLONE
-#else
+#if ! ARMQ_NO_HINT_0CLONE
         if( 0 == port_out_selected->runtime_info.nfifos )
         {
             return false;
@@ -184,8 +183,7 @@ struct RRWorkerMixAllocMeta : public TaskMixAllocMeta
 #endif
         fifo = fifos_out[ idx_out_selected ];
         functor = port_out_selected->runtime_info.fifo_functor;
-#if IGNORE_HINT_FULLQ
-#else
+#if ! ARMQ_NO_HINT_FULLQ
         if( 0 == fifo->space_avail() )
         {
             return false;

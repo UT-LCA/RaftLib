@@ -258,13 +258,13 @@ public:
     static void reschedule( Task *task )
     {
         auto *worker( static_cast< WorkerTaskType* >( task ) );
-#if ! IGNORE_HINT_0CLONE
+#if ! ARMQ_NO_HINT_0CLONE
         if( 0 == worker->kernel->getCloneFactor() )
         {
 #endif
             /* if ignore 0-clone hint, wait is the only and default action */
             worker->wait< ScheduleCV >();
-#if ! IGNORE_HINT_0CLONE
+#if ! ARMQ_NO_HINT_0CLONE
         }
         else
         {
