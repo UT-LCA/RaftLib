@@ -49,17 +49,6 @@ public:
     }
     virtual ~ScheduleBurst() = default;
 
-//#if UT_FOUND
-//    /* Note: copy of ScheduleOneShot::globalInitialize() */
-//    virtual void globalInitialize() override
-//    {
-//        slab_create( &oneshot_task_slab, "oneshottask",
-//                     sizeof( OneShotTaskType ), 0 );
-//        oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab,
-//                                                  TCACHE_DEFAULT_MAG_SIZE );
-//    }
-//#endif
-
     static bool shouldExit( Task* task )
     {
         return task->stopped;

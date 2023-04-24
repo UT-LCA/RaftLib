@@ -50,6 +50,7 @@ inline __thread tcache_perthread __perthread_mix_alloc_meta_pt;
 
 class AllocateMix : public Allocate
 {
+    typedef RRWorkerMixAllocMeta WorkerMixAllocMeta;
 public:
 
     /**
@@ -68,6 +69,15 @@ public:
             /* each fifos array has a terminator, nullptr */
             while( nullptr != fifos[ idx ] )
             {
+#if DUMP_FIFO_BLOCKED_STATS
+                Buffer::Blocked rstat, wstat;
+                fifos[ idx ]->get_zero_read_stats( rstat );
+                fifos[ idx ]->get_zero_write_stats( wstat );
+                std::cout << idx << " 0x" << std::hex <<
+                    (uint64_t)fifos[ idx ] << std::dec << " " <<
+                    rstat.bec.blocked << " " << rstat.bec.count << " " <<
+                    wstat.bec.blocked << " " << wstat.bec.count << std::endl;
+#endif
                 /* this deletes the fifo */
                 delete fifos[ idx++ ];
             }
@@ -132,17 +142,19 @@ public:
     }
 
 #if UT_FOUND
-    virtual void globalInitialize()
+    virtual void globalInitialize() override
     {
         slab_create( &streaming_data_slab, "streamingdata",
                      sizeof( StreamingData ), 0 );
         streaming_data_tcache = slab_create_tcache( &streaming_data_slab, 64 );
         slab_create( &mix_alloc_meta_slab, "mixallocmeta",
-                     sizeof( RRWorkerMixAllocMeta ), 0 );
+                     sizeof( WorkerMixAllocMeta ), 0 );
+        static_assert( sizeof( WorkerMixAllocMeta ) >=
+                       sizeof( OneShotMixAllocMeta ) );
         mix_alloc_meta_tcache = slab_create_tcache( &mix_alloc_meta_slab, 64 );
     }
 
-    virtual void perthreadInitialize()
+    virtual void perthreadInitialize() override
     {
         tcache_init_perthread( streaming_data_tcache,
                                &__perthread_streaming_data_pt );
@@ -343,8 +355,6 @@ public:
 
 protected:
 
-    typedef RRWorkerMixAllocMeta WorkerMixAllocMeta;
-
     inline static WorkerMixAllocMeta *cast_worker_meta( TaskAllocMeta *meta )
     {
         return static_cast< WorkerMixAllocMeta* >( meta );
@@ -360,13 +370,16 @@ protected:
         return pi.runtime_info.fifo_functor;
     }
 
-    inline void polling_worker_init( PollingWorker *worker )
+    __attribute__((noinline)) /* function accessing tls cannot inline */
+    void polling_worker_init( PollingWorker *worker )
     {
         auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
                     worker->kernel->getAllocMeta() ) );
 
 #if USE_UT
+        preempt_disable();
         auto *tmeta_ptr_tmp( tcache_alloc( &__perthread_mix_alloc_meta_pt ) );
+        preempt_enable();
         worker->alloc_meta =
             new ( tmeta_ptr_tmp ) WorkerMixAllocMeta( *kmeta,
                                                       worker->clone_id );
@@ -376,14 +389,17 @@ protected:
 #endif
     }
 
-    inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
+    __attribute__((noinline)) /* function accessing tls cannot inline */
+    void oneshot_init( OneShotTask *oneshot, bool alloc_input )
     {
         auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
                     oneshot->kernel->getAllocMeta() ) );
         oneshot->stream_in = nullptr;
 #if USE_UT
+        preempt_disable();
         auto *stream_out_ptr_tmp(
                 tcache_alloc( &__perthread_streaming_data_pt ) );
+        auto *tmeta_ptr_tmp( tcache_alloc( &__perthread_mix_alloc_meta_pt ) );
         oneshot->stream_out = new ( stream_out_ptr_tmp ) StreamingData(
                 oneshot, StreamingData::SINGLE_OUT );
         if( alloc_input )
@@ -396,7 +412,7 @@ protected:
             oneshot->stream_in = new ( stream_in_ptr_tmp ) StreamingData(
                     oneshot, sd_in_type );
         }
-        auto *tmeta_ptr_tmp( tcache_alloc( &__perthread_mix_alloc_meta_pt ) );
+        preempt_enable();
         oneshot->alloc_meta =
             new ( tmeta_ptr_tmp ) OneShotMixAllocMeta( *kmeta );
 #else
@@ -414,11 +430,16 @@ protected:
 #endif
     }
 
-    static inline void oneshot_commit( OneShotTask *oneshot )
+    static __attribute__((noinline)) /* function accessing tls cannot inline */
+    void oneshot_commit( OneShotTask *oneshot )
     {
+#if USE_UT
+        preempt_disable();
+#endif
         if( nullptr != oneshot->stream_in )
         {
 #if USE_UT
+            oneshot->stream_in->~StreamingData();
             tcache_free( &__perthread_streaming_data_pt, oneshot->stream_in );
 #else
             delete oneshot->stream_in;
@@ -430,6 +451,7 @@ protected:
         if( nullptr != oneshot->stream_out )
         {
 #if USE_UT
+            oneshot->stream_out->~StreamingData();
             tcache_free( &__perthread_streaming_data_pt, oneshot->stream_out );
 #else
             delete oneshot->stream_out;
@@ -437,7 +459,9 @@ protected:
             oneshot->stream_out = nullptr;
         }
 #if USE_UT
-        tcache_free( &__perthread_mix_alloc_meta_pt, oneshot->alloc_meta );
+        tcache_free( &__perthread_mix_alloc_meta_pt,
+                     cast_oneshot_meta( oneshot->alloc_meta ) );
+        preempt_enable();
 #else
         delete oneshot->alloc_meta;
 #endif

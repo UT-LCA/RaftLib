@@ -86,7 +86,7 @@ public:
     }
 
 #if UT_FOUND
-    virtual void globalInitialize()
+    virtual void globalInitialize() override
     {
         slab_create( &streaming_data_slab, "streamingdata",
                      sizeof( StreamingData ), 0 );
@@ -96,7 +96,7 @@ public:
         new_alloc_meta_tcache = slab_create_tcache( &new_alloc_meta_slab, 64 );
     }
 
-    virtual void perthreadInitialize()
+    virtual void perthreadInitialize() override
     {
         tcache_init_perthread( streaming_data_tcache,
                                &__perthread_streaming_data_pt );
@@ -246,11 +246,12 @@ public:
 
 protected:
 
-
-    inline void oneshot_init( OneShotTask *oneshot, bool alloc_input )
+    __attribute__((noinline)) /* function accessing tls cannot inline */
+    void oneshot_init( OneShotTask *oneshot, bool alloc_input )
     {
         oneshot->stream_in = nullptr;
 #if USE_UT
+        preempt_disable();
         auto *stream_out_ptr_tmp(
                 tcache_alloc( &__perthread_streaming_data_pt ) );
         oneshot->stream_out = new ( stream_out_ptr_tmp ) StreamingData(
@@ -266,6 +267,7 @@ protected:
                 new ( stream_in_ptr_tmp ) StreamingData( oneshot, sd_in_type );
         }
         auto *tmeta_ptr_tmp( tcache_alloc( &__perthread_new_alloc_meta_pt ) );
+        preempt_enable();
         oneshot->alloc_meta = new ( tmeta_ptr_tmp ) TaskNewAllocMeta();
 #else
         oneshot->stream_out = new StreamingData( oneshot,
@@ -288,8 +290,12 @@ protected:
         }
     }
 
-    static inline void oneshot_commit( OneShotTask *oneshot )
+    static __attribute__((noinline)) /* function accessing tls cannot inline */
+    void oneshot_commit( OneShotTask *oneshot )
     {
+#if USE_UT
+        preempt_disable();
+#endif
         if( nullptr != oneshot->stream_in )
         {
 #if USE_UT
@@ -310,6 +316,7 @@ protected:
         }
 #if USE_UT
         tcache_free( &__perthread_new_alloc_meta_pt, oneshot->alloc_meta );
+        preempt_enable();
 #else
         delete oneshot->alloc_meta;
 #endif

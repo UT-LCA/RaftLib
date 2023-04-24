@@ -108,19 +108,16 @@ public:
     virtual DataRef allocate() const
     {
         DataRef ref;
-        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
-        new ( ptr )T(); /* TODO: this assumes plain constructor exists for T */
-        ref.set< T >( *ptr );
+        /* TODO: this assumes plain constructor exists for T */
+        ref.set< T >( *( new T() ) );
         return ref;
     }
 
     virtual DataRef allocate( DataRef &data_ref ) const
     {
         DataRef ref;
-        T *ptr = reinterpret_cast< T* >( malloc( sizeof( T ) ) );
-        new ( ptr )T( data_ref.get< T >() );
         /* TODO: this assumes copy constructor exists for T */
-        ref.set< T >( *ptr );
+        ref.set< T >( *( new T( data_ref.get< T >() ) ) );
         return ref;
     }
 };

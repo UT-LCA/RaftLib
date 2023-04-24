@@ -157,7 +157,7 @@ private:
                 ScheduleMix::shot_direct( other_pi, ref );
                 return true;
 #else
-                shot_kernel< ScheduleMix, OneShotTaskType> (
+                shot_kernel< ScheduleMix, OneShotTaskType > (
                         other_pi->my_kernel, other_pi->my_name, ref, -1 );
                 break;
 #endif
@@ -186,7 +186,7 @@ private:
         oneshot->wg = &wg;
         rt::Spawn( [ oneshot ]() {
                 oneshot->exe< ScheduleMix >();
-                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
+                free_an_oneshot( oneshot ); },
                    /* swap = */ true );
     }
 #endif
@@ -223,7 +223,14 @@ public:
             auto *worker( static_cast< WorkerTaskType* >( task ) );
             if( ! ScheduleMix::feed_consumers( worker ) )
             {
-                worker->wait< ScheduleMixCV >();
+                if( 0 == ScheduleMixCV::get_nclones( worker->kernel ) )
+                {
+                    worker->wait< ScheduleMixCV >();
+                }
+                else
+                {
+                    worker_yield( worker );
+                }
             }
             return;
         }

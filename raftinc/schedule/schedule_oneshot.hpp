@@ -61,8 +61,7 @@ public:
     {
         slab_create( &oneshot_task_slab, "oneshottask",
                      sizeof( OneShotTaskType ), 0 );
-        oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab,
-                                                  TCACHE_DEFAULT_MAG_SIZE );
+        oneshot_task_tcache = slab_create_tcache( &oneshot_task_slab, 64 );
     }
 
     virtual void perthreadInitialize() override
@@ -100,10 +99,13 @@ public:
 protected:
 
     template< class ONESHOTTYPE >
-    static inline ONESHOTTYPE *new_an_oneshot( Kernel *kernel, bool is_source )
+    static __attribute__((noinline)) /* function accessing tls cannot inline */
+    ONESHOTTYPE *new_an_oneshot( Kernel *kernel, bool is_source )
     {
 #if USE_UT
+        preempt_disable();
         auto *task_ptr_tmp( tcache_alloc( &__perthread_oneshot_task_pt ) );
+        preempt_enable();
         auto *oneshot( new ( task_ptr_tmp ) ONESHOTTYPE() );
 #else
         auto *oneshot( new ONESHOTTYPE() );
@@ -116,6 +118,19 @@ protected:
         return oneshot;
     }
 
+#if UT_FOUND
+    template< class ONESHOTTYPE >
+    static __attribute__((noinline)) /* function accessing tls cannot inline */
+    void free_an_oneshot( ONESHOTTYPE *oneshot )
+    {
+        preempt_disable();
+        tcache_free( &__perthread_oneshot_task_pt, oneshot );
+        preempt_enable();
+    }
+#endif
+
+    /* Note: caller should not touch oneshot anymore as the new task could
+     * have free'ed oneshot after use */
     template< class SCHEDULER, class ONESHOTTYPE >
     static inline void run_oneshot( ONESHOTTYPE *oneshot, int64_t gid )
     {
@@ -129,7 +144,7 @@ protected:
         oneshot->wg = &wg;
         rt::Spawn( [ oneshot ]() {
                 oneshot->template exe< SCHEDULER >();
-                tcache_free( &__perthread_oneshot_task_pt, oneshot ); },
+                free_an_oneshot( oneshot ); },
                 false, gid );
 #else
         auto *tnode( new OneShotListNode(
