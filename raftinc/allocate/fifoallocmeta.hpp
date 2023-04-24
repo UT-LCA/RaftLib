@@ -283,6 +283,24 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
     FIFO *fifo_in_selected;
     int idx_out_selected;
 
+    inline int nfifosIn() const
+    {
+        if( 0 >= ninputs )
+        {
+            return 0;
+        }
+        return idxs_in[ ninputs ];
+    }
+
+    inline int nfifosOut() const
+    {
+        if( 0 >= noutputs )
+        {
+            return 0;
+        }
+        return idxs_out[ ( noutputs << 1 ) + 1 ];
+    }
+
     int selectIn( const port_key_t &name )
     {
         auto selected( kmeta.selectIn( name ) );
@@ -353,7 +371,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
         {
             return;
         }
-        std::size_t nfifos_out( idxs_out[ ( noutputs << 1 ) + 1 ] );
+        std::size_t nfifos_out( nfifosOut() );
         for( std::size_t i( 0 ); nfifos_out > i; ++i )
         {
             fifos_out[ i ]->invalidate();
@@ -392,7 +410,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             /* let the source polling worker loop until the stop signal */
             return true;
         }
-        std::size_t nfifos_in( idxs_in[ ninputs ] );
+        std::size_t nfifos_in( nfifosIn() );
         for( std::size_t i( 0 ); nfifos_in > i; ++i )
         {
             if( ! fifos_in[ i ]->is_invalid() )
@@ -412,7 +430,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             return true ;
         }
 
-        int idx_beg = 0, idx_end = idxs_in[ ninputs ];
+        int idx_beg = 0, idx_end = nfifosIn();
         std::size_t port_idx = 1;
         if( null_port_value != name )
         {
@@ -450,7 +468,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
     {
         if( 0 < ninputs )
         {
-            std::size_t nfifos_in( idxs_in[ ninputs ] );
+            std::size_t nfifos_in( nfifosIn() );
             for( std::size_t i( 0 ); nfifos_in > i; ++i )
             {
                 fifo_consumers[ fifos_in[ i ] ] = consumer;
@@ -462,8 +480,7 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             return;
         }
 
-        std::size_t nfifos_out( idxs_out[ ( noutputs << 1 ) + 1 ] );
-        consumers = new CondVarWorker*[ nfifos_out ]();
+        consumers = new CondVarWorker*[ nfifosOut() ]();
         fifo_consumers_ptr = &fifo_consumers;
     }
 };

@@ -35,6 +35,8 @@
 #include "raftinc/allocate/allocate_new.hpp"
 #include "raftinc/allocate/functors.hpp"
 
+#define IGNORE_ALL_HINTS ( IGNORE_HINT_FULLQ && IGNORE_HINT_0CLONE )
+
 namespace raft
 {
 
@@ -113,8 +115,48 @@ struct TaskMixAllocMeta : public TaskFIFOAllocMeta, public BufListMetaAddOn
     TaskMixAllocMeta( const KernelFIFOAllocMeta &meta, int rr_idx ) :
         TaskFIFOAllocMeta( meta, rr_idx ), BufListMetaAddOn( meta )
     {
+#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+        auto nfifos_out( nfifosOut() );
+        if( 0 < nfifos_out )
+        {
+            oneshot_cnts = new uint64_t[ nfifos_out ]();
+        }
+        else
+        {
+            oneshot_cnts = nullptr;
+        }
+#endif
     }
+
+    virtual ~TaskMixAllocMeta()
+    {
+#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+        if( nullptr != oneshot_cnts )
+        {
+            int nfifos_out( nfifosOut() );
+            for( int idx( 0 ); nfifos_out > idx; ++idx )
+            {
+                std::cout << std::hex << (uint64_t)fifos_out[ idx ] <<
+                    std::dec << " " << oneshot_cnts[ idx ] << std::endl;
+            }
+            delete[] oneshot_cnts;
+            oneshot_cnts = nullptr;
+        }
+#endif
+    }
+
     using TaskFIFOAllocMeta::kmeta;
+#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+    uint64_t *oneshot_cnts;
+
+    void oneshotCnt()
+    {
+        if( nullptr != oneshot_cnts )
+        {
+            oneshot_cnts[ idx_out_selected ]++;
+        }
+    }
+#endif
 };
 
 struct RRWorkerMixAllocMeta : public TaskMixAllocMeta

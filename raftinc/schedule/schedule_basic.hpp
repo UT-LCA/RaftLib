@@ -142,6 +142,7 @@ public:
         if( ONE_SHOT != task->type )
         {
             Singleton::allocate()->invalidateOutputs( task );
+            Singleton::allocate()->taskCommit( task );
         }
 #if USE_UT
         waitgroup_done( task->wg );

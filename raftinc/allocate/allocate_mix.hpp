@@ -69,7 +69,7 @@ public:
             /* each fifos array has a terminator, nullptr */
             while( nullptr != fifos[ idx ] )
             {
-#if DUMP_FIFO_BLOCKED_STATS
+#if DUMP_FIFO_STATS
                 Buffer::Blocked rstat, wstat;
                 fifos[ idx ]->get_zero_read_stats( rstat );
                 fifos[ idx ]->get_zero_write_stats( wstat );
@@ -148,9 +148,7 @@ public:
                      sizeof( StreamingData ), 0 );
         streaming_data_tcache = slab_create_tcache( &streaming_data_slab, 64 );
         slab_create( &mix_alloc_meta_slab, "mixallocmeta",
-                     sizeof( WorkerMixAllocMeta ), 0 );
-        static_assert( sizeof( WorkerMixAllocMeta ) >=
-                       sizeof( OneShotMixAllocMeta ) );
+                     sizeof( OneShotMixAllocMeta ), 0 );
         mix_alloc_meta_tcache = slab_create_tcache( &mix_alloc_meta_slab, 64 );
     }
 
@@ -202,6 +200,10 @@ public:
         if( ONE_SHOT == task->type )
         {
             oneshot_commit( static_cast< OneShotTask* >( task ) );
+        }
+        else
+        {
+            worker_commit( task );
         }
     }
 
@@ -295,6 +297,9 @@ public:
             else
             {
                 tmeta->pushOutBuf( item, selected );
+#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+                tmeta->oneshotCnt();
+#endif
             }
         }
     }
@@ -317,6 +322,9 @@ public:
             }
             else
             {
+#if ! IGNORE_ALL_HINTS && DUMP_FIFO_STATS
+                tmeta->oneshotCnt();
+#endif
                 return tmeta->allocateOutBuf( selected );
             }
         }
@@ -370,23 +378,12 @@ protected:
         return pi.runtime_info.fifo_functor;
     }
 
-    __attribute__((noinline)) /* function accessing tls cannot inline */
-    void polling_worker_init( PollingWorker *worker )
+    static inline void polling_worker_init( PollingWorker *worker )
     {
         auto *kmeta( static_cast< KernelFIFOAllocMeta* >(
                     worker->kernel->getAllocMeta() ) );
-
-#if USE_UT
-        preempt_disable();
-        auto *tmeta_ptr_tmp( tcache_alloc( &__perthread_mix_alloc_meta_pt ) );
-        preempt_enable();
-        worker->alloc_meta =
-            new ( tmeta_ptr_tmp ) WorkerMixAllocMeta( *kmeta,
-                                                      worker->clone_id );
-#else
         worker->alloc_meta = new WorkerMixAllocMeta( *kmeta,
                                                      worker->clone_id );
-#endif
     }
 
     __attribute__((noinline)) /* function accessing tls cannot inline */
@@ -466,6 +463,11 @@ protected:
         delete oneshot->alloc_meta;
 #endif
         oneshot->alloc_meta = nullptr;
+    }
+
+    static inline void worker_commit( Task *task )
+    {
+        delete task->alloc_meta;
     }
 
     /**

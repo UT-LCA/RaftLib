@@ -84,6 +84,15 @@ public:
             /* each fifos array has a terminator, nullptr */
             while( nullptr != fifos[ idx ] )
             {
+#if DUMP_FIFO_STATS
+                Buffer::Blocked rstat, wstat;
+                fifos[ idx ]->get_zero_read_stats( rstat );
+                fifos[ idx ]->get_zero_write_stats( wstat );
+                std::cout << idx << " 0x" << std::hex <<
+                    (uint64_t)fifos[ idx ] << std::dec << " " <<
+                    rstat.bec.blocked << " " << rstat.bec.count << " " <<
+                    wstat.bec.blocked << " " << wstat.bec.count << std::endl;
+#endif
                 /* this deletes the fifo */
                 delete fifos[ idx++ ];
             }
