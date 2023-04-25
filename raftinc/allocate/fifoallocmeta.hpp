@@ -234,7 +234,8 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             idx_out_selected = 0;
         }
         consumers = nullptr;
-        fifo_consumers_ptr = nullptr;
+        producers = nullptr;
+        fifo_waiters_ptr = nullptr;
     }
 
     virtual ~TaskFIFOAllocMeta()
@@ -258,6 +259,11 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             delete[] consumers;
             consumers = nullptr;
         }
+        if( nullptr != producers )
+        {
+            delete[] producers;
+            producers = nullptr;
+        }
     }
 
     const KernelFIFOAllocMeta &kmeta;
@@ -275,7 +281,8 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
     FIFO **fifos_in;
     FIFO **fifos_out;
     CondVarWorker **consumers; /* serve as the cache of fifo_consumers */
-    std::unordered_map< FIFO*, CondVarWorker* >* fifo_consumers_ptr;
+    CondVarWorker **producers; /* serve as the cache of fifo_producers */
+    fifo_waiter_map_t *fifo_waiters_ptr;
 
     /* cache for selection */
     PortInfo *port_in_selected;
@@ -352,12 +359,11 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
             consumers[ idx_out_selected ]->wakeup();
             return;
         }
-        auto iter( fifo_consumers_ptr->find(
-                    fifos_out[ idx_out_selected ] ) );
-        if( fifo_consumers_ptr->end() != iter &&
-            nullptr != iter->second )
+        auto iter( fifo_waiters_ptr->find( fifos_out[ idx_out_selected ] ) );
+        if( fifo_waiters_ptr->end() != iter &&
+            nullptr != iter->second.consumer )
         {
-            consumers[ idx_out_selected ] = iter->second;
+            consumers[ idx_out_selected ] = iter->second.consumer;
             /* cache the lookup results */
             consumers[ idx_out_selected ]->wakeup();
         }
@@ -391,11 +397,11 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
                      * the fifo_consumers map to make sure not missing
                      * a waiting consumer
                      */
-                    auto iter = fifo_consumers_ptr->find( fifos_out[ i ] );
-                    if( fifo_consumers_ptr->end() != iter &&
-                        nullptr != iter->second )
+                    auto iter = fifo_waiters_ptr->find( fifos_out[ i ] );
+                    if( fifo_waiters_ptr->end() != iter &&
+                        nullptr != iter->second.consumer )
                     {
-                        iter->second->wakeup();
+                        iter->second.consumer->wakeup();
                     }
                 }
             }
@@ -457,31 +463,40 @@ struct TaskFIFOAllocMeta : public TaskAllocMeta
         return false;
     }
 
-    /* consumerInit - allocate the consumers array, and also populate the
-     * fifo_consumers map for AllocateFIFOCV
-     * @param consumer - CondVarWorker*
-     * @param fifo_consumers - std::unordered_map< FIFO*, CondVarWorker* > &
+    /* waiterInit - allocate the consumers array, and also populate the
+     * fifo_waiters map for AllocateFIFOCV
+     * @param worker - CondVarWorker*
+     * @param fifo_waiters - fifo_waiter_map_t&
      */
-    void consumerInit( CondVarWorker* consumer,
-                       std::unordered_map< FIFO*,
-                                           CondVarWorker* > &fifo_consumers )
+    void waiterInit( CondVarWorker* worker, fifo_waiter_map_t &fifo_waiters )
     {
         if( 0 < ninputs )
         {
             std::size_t nfifos_in( nfifosIn() );
             for( std::size_t i( 0 ); nfifos_in > i; ++i )
             {
-                fifo_consumers[ fifos_in[ i ] ] = consumer;
+                fifo_waiters[ fifos_in[ i ] ].consumer = worker;
+            }
+            if( 0 < nfifos_in )
+            {
+                producers = new CondVarWorker*[ nfifos_in ]();
             }
         }
 
-        if( 0 == noutputs )
+        if( 0 < noutputs )
         {
-            return;
+            std::size_t nfifos_out( nfifosOut() );
+            for( std::size_t i( 0 ); nfifos_out > i; ++i )
+            {
+                fifo_waiters[ fifos_out[ i ] ].producer = worker;
+            }
+            if( 0 < nfifos_out )
+            {
+                consumers = new CondVarWorker*[ nfifos_out ]();
+            }
         }
 
-        consumers = new CondVarWorker*[ nfifosOut() ]();
-        fifo_consumers_ptr = &fifo_consumers;
+        fifo_waiters_ptr = &fifo_waiters;
     }
 };
 

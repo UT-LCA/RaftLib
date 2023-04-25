@@ -86,9 +86,11 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 #if USE_UT
     rt::Mutex m;
     rt::CondVar cv;
+    rt::CondVar cv_prod; /* condition variable wait on as a producer */
 #else
     std::mutex m;
     std::condition_variable cv;
+    std::condition_variable cv_prod;
 #endif
 
     CondVarWorker() : PollingWorker()
@@ -118,6 +120,22 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 #endif
     }
 
+    /* Note: unlike wait(), producer_wait() sleep condition should be evaluated
+     * once before calling */
+    void producer_wait()
+    {
+#if USE_UT
+        m.Lock();
+        cv_prod.Wait( &m );
+        m.Unlock();
+#else
+        int8_t slept = 0;
+        std::unique_lock lk( m );
+        cv_prod.wait( lk, [ & ]() { return slept++; } );
+        lk.unlock();
+#endif
+    }
+
     void wakeup()
     {
 #if USE_UT
@@ -128,6 +146,19 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) CondVarWorker : public PollingWorker
 #endif
 #else
         cv.notify_one();
+#endif
+    }
+
+    void wakup_producer()
+    {
+#if USE_UT
+#if ARMQ_NO_INSTANT_SWAP
+        cv_prod.Signal();
+#else
+        cv_prod.SignalSwap();
+#endif
+#else
+        cv_prod.notify_one();
 #endif
     }
 };

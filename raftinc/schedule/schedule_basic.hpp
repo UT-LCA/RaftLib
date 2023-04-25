@@ -252,7 +252,7 @@ public:
 
     static void prepare( Task *task )
     {
-        Singleton::allocate()->registerConsumer( task );
+        Singleton::allocate()->registerWaiter( task );
     }
 
     static void reschedule( Task *task )

@@ -130,10 +130,10 @@ public:
         oneshot_init( t, alloc_input );
     }
 
-    virtual void registerConsumer( Task *task )
+    virtual void registerWaiter( Task *task )
     {
         throw MethodNotImplementdException(
-                "AllocateNew::registerConsumer()" );
+                "AllocateNew::registerWaiter()" );
         UNUSED( task );
     }
 

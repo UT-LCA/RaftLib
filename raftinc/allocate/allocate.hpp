@@ -95,7 +95,7 @@ public:
     virtual bool bufOutReady( Task *task, const port_key_t &name ) = 0;
 
     virtual void taskInit( Task *task, bool alloc_input = false ) = 0;
-    virtual void registerConsumer( Task *task ) = 0;
+    virtual void registerWaiter( Task *task ) = 0;
     virtual void taskCommit( Task *task ) = 0;
     virtual void invalidateOutputs( Task *task ) = 0;
     virtual bool taskHasInputPorts( Task *task ) = 0;

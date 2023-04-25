@@ -25,6 +25,7 @@
 #include <climits>
 #include <limits>
 #include <unordered_set>
+#include <unordered_map>
 #include <string>
 
 #if (! defined STRING_NAMES) || (STRING_NAMES == 0)
@@ -40,6 +41,17 @@ const static std::uint8_t bits_per_byte = CHAR_BIT;
 /** predeclare raft::Kernel for kernelset_t below **/
 class Kernel;
 using kernelset_t = std::unordered_set< Kernel* >;
+
+/** predeclare raft::FIFO, raft::CondVarWorker for fifo_waiter_map_t below **/
+class FIFO;
+class CondVarWorker;
+struct WaiterPair
+{
+    CondVarWorker* producer;
+    CondVarWorker* consumer;
+};
+
+using fifo_waiter_map_t = std::unordered_map< FIFO*, WaiterPair >;
 
 /** use this to turn on string names vs. off **/
 /**

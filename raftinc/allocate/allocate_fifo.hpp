@@ -142,9 +142,9 @@ public:
             k->setAllocMeta( new KernelFIFOAllocMeta( k ) );
         }
 
-        /* preset consumers for each fifo to be nullptr, this is really just the
+        /* preset waiters for each fifo to be nullptr, this is really just the
          * hook to let AllocateFIFOCV plug into the initial allocation phase */
-        (this)->preset_fifo_consumers();
+        (this)->preset_fifo_waiters();
 
         (this)->ready = true;
         return dag;
@@ -166,7 +166,7 @@ public:
         worker_init( task );
     }
 
-    virtual void registerConsumer( Task *task )
+    virtual void registerWaiter( Task *task )
     {
         UNUSED( task );
     }
@@ -301,11 +301,11 @@ protected:
     }
 
     /**
-     * preset_fifo_consumers - this is the hook function to allow
+     * preset_fifo_waiters - this is the hook function to allow
      * AllocateFIFOCV to override and prepare its structure during the initial
      * allocation phase
      */
-    virtual void preset_fifo_consumers()
+    virtual void preset_fifo_waiters()
     {
         /* do nothing */
     }
@@ -356,17 +356,17 @@ public:
         tmeta->nextFIFO( selected );
     }
 
-    virtual void registerConsumer( Task *task )
+    virtual void registerWaiter( Task *task )
     {
         assert( CONDVAR_WORKER == task->type );
         auto *tmeta( cast_meta( task->alloc_meta ) );
         auto *worker( static_cast< CondVarWorker* >( task ) );
-        tmeta->consumerInit( worker, fifo_consumers );
+        tmeta->waiterInit( worker, fifo_waiters );
     }
 
 protected:
 
-    virtual void preset_fifo_consumers()
+    virtual void preset_fifo_waiters()
     {
         for( auto *fifos : allocated_fifos )
         {
@@ -374,12 +374,12 @@ protected:
             while( nullptr != fifos[ idx ] )
             {
                 /* allocate the slot earlier to avoid resize */
-                fifo_consumers[ fifos[ idx++ ] ] = nullptr;
+                fifo_waiters[ fifos[ idx++ ] ] = { nullptr, nullptr };
             }
         }
     }
 
-    std::unordered_map< FIFO*, CondVarWorker* > fifo_consumers;
+    fifo_waiter_map_t fifo_waiters;
 
 }; /** end AllocateFIFOCV decl **/
 
