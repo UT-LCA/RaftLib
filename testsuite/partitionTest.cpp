@@ -35,8 +35,8 @@ main( int argc, char **argv )
 
     raft::DAG dag;
     /** make one sub kernel, this one will live on the stack **/
-    sub s( 1, 1, l_sub, l_pop );
-    raft::Kpair *kpair = &( rndgen >> s );
+    sub s0( 1, 1, l_sub, l_pop ), s1( 1, 1, l_sub, l_pop );
+    raft::Kpair *kpair = &( rndgen >> s0 );
     for( int i( 0 ); i < 
 #ifdef USEQTHREADS
     1000
@@ -48,7 +48,7 @@ main( int argc, char **argv )
         kpair = &( ( *kpair ) >>
                 raft::kernel_maker< sub >( 1, 1, l_sub, l_pop ) );
     }
-    dag += *kpair >> p;
+    dag += *kpair >> ( s1 >> p );
     dag.exe< raft::RuntimeFIFO >();
     return( EXIT_SUCCESS );
 }

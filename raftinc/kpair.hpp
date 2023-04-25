@@ -44,7 +44,7 @@ public:
            const port_key_t &pb = null_port_value
            ) : src( a ), dst( b ), src_name( pa ), dst_name( pb )
     {
-        head = this;
+        head = tail = this;
         priority_factor = 1;
     }
 
@@ -56,9 +56,10 @@ public:
     Kpair( Kernel *a,
            Kpair &b,
            const port_key_t &pa = null_port_value
-           ) : Kpair( a, b.src, pa )
+           ) : Kpair( a, b.head->src, pa )
     {
-        next = &b;
+        next = b.head;
+        tail = b.tail;
         b.head = this;
         priority_factor = b.priority_factor + 1;
     }
@@ -74,40 +75,33 @@ public:
 
     Kpair( KernelPort &a,
            Kpair &b
-           ) : Kpair( a.kernel, b.src, a.pop_name() )
+           ) : Kpair( a.kernel, b, a.pop_name() )
     {
-        next = &b;
-        b.head = this;
-        priority_factor = b.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
            Kernel *b,
            const port_key_t &pb = null_port_value
-           ) : Kpair( a.dst, b, null_port_value, pb )
+           ) : Kpair( a.tail->dst, b, null_port_value, pb )
     {
         head = a.head;
-        a.next = this;
+        a.tail->next = this;
         priority_factor = a.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
            KernelPort &b
-           ) : Kpair( a.dst, b.kernel, null_port_value, b.pop_name() )
+           ) : Kpair( a, b.kernel, b.pop_name() )
     {
-        head = a.head;
-        a.next = this;
-        priority_factor = a.priority_factor + 1;
     }
 
     Kpair( Kpair &a,
            Kpair &b
-           ) : Kpair( a.dst, b.src )
+           ) : Kpair( *a.tail, b.head->src, b.head->src_name )
     {
-        head = a.head;
-        a.next = this;
+        tail = b.tail;
+        next = b.head;
         b.head = a.head;
-        next = &b;
         priority_factor = std::max( a.priority_factor, b.priority_factor ) + 1;
     }
 
@@ -147,6 +141,7 @@ public:
 protected:
     Kpair *next = nullptr;
     Kpair *head = nullptr;
+    Kpair *tail = nullptr;
     Kernel *src = nullptr;
     Kernel *dst = nullptr;
     port_key_t src_name = null_port_value;
