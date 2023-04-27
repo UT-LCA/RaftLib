@@ -38,6 +38,7 @@ set( TESTAPPS
      allocatePopInternalObject
      bulletAllocateInternalObject
      allocatePopExternal
+     ringbufferLinked
      lambdatest
      foreach
      #dynallocate

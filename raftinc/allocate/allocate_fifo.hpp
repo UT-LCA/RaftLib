@@ -90,6 +90,7 @@ public:
                 fifos[ idx ]->get_zero_write_stats( wstat );
                 std::cout << idx << " 0x" << std::hex <<
                     (uint64_t)fifos[ idx ] << std::dec << " " <<
+                    fifos[ idx ]->capacity() << " " <<
                     rstat.bec.blocked << " " << rstat.bec.count << " " <<
                     wstat.bec.blocked << " " << wstat.bec.count << std::endl;
 #endif
@@ -126,8 +127,13 @@ public:
             {
                 for( int i( 0 ); nfifos > i; ++i )
                 {
+#if ARMQ_DYNAMIC_ALLOC
+                    fifos[ i ] = functor->make_new_fifo_linked(
+                            INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
+#else
                     fifos[ i ] = functor->make_new_fifo(
                             INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
+#endif
                 }
             }
             /* mark the end of the fifos array */

@@ -118,8 +118,13 @@ public:
             {
                 for( int i( 0 ); nfifos > i; ++i )
                 {
+#if ARMQ_DYNAMIC_ALLOC
+                    fifos[ i ] = functor->make_new_fifo_linked(
+                            INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
+#else
                     fifos[ i ] = functor->make_new_fifo(
                             INITIAL_ALLOC_SIZE, ALLOC_ALIGN_WIDTH, nullptr );
+#endif
                 }
             }
             fifos[ nfifos ] = nullptr;

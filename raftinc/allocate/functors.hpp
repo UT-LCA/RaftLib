@@ -145,6 +145,10 @@ public:
                                          const std::size_t align,
                                          void * const data ) = 0;
 
+    virtual FIFO *make_new_fifo_linked( const std::size_t n_items,
+                                        const std::size_t align,
+                                        void * const data ) = 0;
+
     virtual std::size_t size( FIFO *fifo )
     {
         return fifo->size();
@@ -394,6 +398,15 @@ public:
     {
         return RingBuffer< T,
                            Buffer::Type::Heap,
+                           true >::make_new_fifo( n_items, align, data );
+    }
+
+    virtual FIFO *make_new_fifo_linked( const std::size_t n_items,
+                                        const std::size_t align,
+                                        void * const data )
+    {
+        return RingBuffer< T,
+                           Buffer::Type::LinkedList,
                            true >::make_new_fifo( n_items, align, data );
     }
 

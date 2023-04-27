@@ -37,6 +37,7 @@
 #include "raftinc/allocate/ringbufferbase.tcc"
 #include "raftinc/allocate/ringbufferbase_monitored.tcc"
 #include "raftinc/allocate/ringbufferbase_mutexed.tcc"
+#include "raftinc/allocate/ringbufferlinked.tcc"
 #include "raftinc/allocate/buffer/buffertypes.hpp"
 
 
@@ -241,6 +242,25 @@ public:
 
 protected:
     const std::string shm_key;
+};
+
+/**
+ * LinkedList
+ */
+template <class T>
+class RingBuffer< T, Buffer::Type::LinkedList, true >
+{
+public:
+    RingBuffer() = default;
+    virtual ~RingBuffer() = default;
+
+    static FIFO* make_new_fifo( const std::size_t n_items,
+                                const std::size_t align,
+                                void * const data )
+    {
+        UNUSED( data );
+        return( new RingBufferLinked< T >( n_items, align ) );
+    }
 };
 
 } /** end namespace raft */

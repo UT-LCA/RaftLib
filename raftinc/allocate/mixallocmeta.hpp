@@ -183,7 +183,7 @@ struct RRWorkerMixAllocMeta : public TaskMixAllocMeta
 #endif
         fifo = fifos_out[ idx_out_selected ];
         functor = port_out_selected->runtime_info.fifo_functor;
-#if ! ARMQ_NO_HINT_FULLQ
+#if ARMQ_DYNAMIC_ALLOC || ! ARMQ_NO_HINT_FULLQ
         if( 0 == fifo->space_avail() )
         {
             return false;

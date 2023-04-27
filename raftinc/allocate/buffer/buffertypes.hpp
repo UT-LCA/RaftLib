@@ -32,11 +32,12 @@ enum value_t {
     SharedMemory,
     TCP,
     Infinite,
+    LinkedList,
     N
 };
 
 static constexpr std::array<  const char[20] , N >
-Prints = {{ "Heap", "SharedMemory", "TCP", "Infinite" }};
+Prints = {{ "Heap", "SharedMemory", "TCP", "Infinite", "LinkedList" }};
 } /* end namespace Type */
 
 
