@@ -529,12 +529,13 @@ struct RRTaskFIFOAllocMeta : public TaskFIFOAllocMeta
     void nextFIFO( int selected )
     {
         /* to round-robin output FIFOs of the selected port */
-        if( idxs_out[ ( selected << 1 ) + 3 ] <= ++idxs_out[ selected << 1 ] )
-        {
-            idxs_out[ selected << 1 ] = idxs_out[ ( selected << 1 ) + 1 ];
-        }
-        idx_out_selected = idxs_out[ selected << 1 ] +
+        idx_out_selected = ++idxs_out[ selected << 1 ] +
                            idxs_out[ ( selected << 1 ) + 1 ];
+        if( idxs_out[ ( selected << 1 ) + 3 ] <= idx_out_selected )
+        {
+            idxs_out[ selected << 1 ] = 0;
+            idx_out_selected = idxs_out[ ( selected << 1 ) + 1 ];
+        }
     }
 };
 
