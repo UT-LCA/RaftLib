@@ -75,6 +75,7 @@ public:
                 fifos[ idx ]->get_zero_write_stats( wstat );
                 std::cout << idx << " 0x" << std::hex <<
                     (uint64_t)fifos[ idx ] << std::dec << " " <<
+                    fifos[ idx ]->capacity() << " " <<
                     rstat.bec.blocked << " " << rstat.bec.count << " " <<
                     wstat.bec.blocked << " " << wstat.bec.count << std::endl;
 #endif

@@ -149,10 +149,16 @@ private:
 #if ARMQ_NO_HINT_0CLONE && ARMQ_NO_HINT_FULLQ
             BUG(); /* when both hints ignored, should never spawn OneShot */
 #endif
+#if ARMQ_DUMP_ONESHOT_STATS
+            worker->oneshot_count++;
+#endif
             auto *other_pi( my_pi->other_port );
             if( is_last )
             {
 #if USE_UT && ! ARMQ_NO_INSTANT_SWAP
+#if ARMQ_DUMP_ONESHOT_STATS
+                worker->swap_count++;
+#endif
                 /* POLLING_WORKER/CONDVAR_WORKER, jump to new task directly */
                 ScheduleMix::shot_direct( other_pi, ref );
                 return true;

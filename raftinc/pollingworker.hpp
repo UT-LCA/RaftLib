@@ -45,11 +45,23 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
     /* the index when there are multiple polling worker clones for a kernel */
     int clone_id;
     int8_t poll_count;
+#if ARMQ_DUMP_ONESHOT_STATS
+    std::size_t oneshot_count;
+#if ! ARMQ_NO_INSTANT_SWAP
+    std::size_t swap_count;
+#endif
+#endif
 
     PollingWorker() : TaskImpl()
     {
         type = POLLING_WORKER;
         poll_count = 0;
+#if ARMQ_DUMP_ONESHOT_STATS
+        oneshot_count = 0;
+#if ! ARMQ_NO_INSTANT_SWAP
+        swap_count = 0;
+#endif
+#endif
     }
 
     virtual ~PollingWorker() = default;

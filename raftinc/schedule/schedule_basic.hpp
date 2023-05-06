@@ -40,12 +40,22 @@
 #include "raftinc/allocate/allocate.hpp"
 #include "raftinc/pollingworker.hpp"
 
+/* this is only used for stats array, not a hard limit */
+#define ARMQ_MAX_WORKERS 256
+
 namespace raft {
 
 #if USE_QTHREAD
 using WorkerListNode = struct QThreadListNode;
 #else
 using WorkerListNode = struct StdThreadListNode;
+#endif
+
+#if ARMQ_DUMP_ONESHOT_STATS
+    inline std::size_t perworker_oneshot_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+#if ! ARMQ_NO_INSTANT_SWAP
+    inline std::size_t perworker_swap_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+#endif
 #endif
 
 class ScheduleBasic : public Schedule
@@ -56,7 +66,22 @@ public:
     {
     }
 
-    virtual ~ScheduleBasic() = default;
+    virtual ~ScheduleBasic()
+    {
+#if ARMQ_DUMP_ONESHOT_STATS
+        for( int i( 0 ); ARMQ_MAX_WORKERS > i; ++i )
+        {
+            if( 0 != perworker_oneshot_count[ i ] )
+            {
+                std::cout << i << " shot " << perworker_oneshot_count[ i ] <<
+#if ! ARMQ_NO_INSTANT_SWAP
+                    " swap " << perworker_swap_count[ i ] <<
+#endif
+                    std::endl;
+            }
+        }
+#endif
+    }
 
     /**
      * schedule - called to start execution of all
@@ -141,6 +166,13 @@ public:
     {
         if( ONE_SHOT != task->type )
         {
+#if ARMQ_DUMP_ONESHOT_STATS
+            auto *worker( static_cast< WorkerTaskType* >( task ) );
+            perworker_oneshot_count[ worker->id ] = worker->oneshot_count;
+#if ! ARMQ_NO_INSTANT_SWAP
+            perworker_swap_count[ worker->id ] = worker->swap_count;
+#endif
+#endif
             Singleton::allocate()->invalidateOutputs( task );
             Singleton::allocate()->taskCommit( task );
         }
