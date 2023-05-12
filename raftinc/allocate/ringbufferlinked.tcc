@@ -297,10 +297,19 @@ public:
                          const std::size_t align,
                          volatile bool &exit_alloc )
     {
-        UNUSED( n_items );
         UNUSED( align );
         UNUSED( exit_alloc );
-        throw MethodNotImplementdException( "RingBufferLinked::resize()" );
+        while( n_items > max_cap )
+        {
+            auto &next( Chunk< T >::nextchunk( chunk_nitems,
+                                               prod_local.chunk_ptr.chunk ) );
+            auto chunk_cpy(
+                    Chunk< T >::allocate( chunk_nitems, chunk_align, next ) );
+            Chunk< T >::nextchunk( chunk_nitems, next ) = chunk_cpy;
+            max_cap += chunk_nitems;
+            prod_local.chunk_ptr.chunk = next;
+            prod_global.ptr = prod_local.ptr;
+        }
     }
 
     virtual float get_frac_write_blocked()
@@ -323,6 +332,15 @@ public:
     virtual bool is_invalid()
     {
         return( ! is_valid );
+    }
+
+    static FIFO* make_new_fifo( const std::size_t n_items,
+                                const std::size_t align,
+                                void * const data )
+    {
+        UNUSED( data );
+        assert( data == nullptr );
+        return( new RingBufferLinked< T >( n_items, align ) );
     }
 
 protected:
