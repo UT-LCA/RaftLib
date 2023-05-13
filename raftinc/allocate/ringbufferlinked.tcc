@@ -149,7 +149,7 @@ public:
 #if (defined __linux ) || (defined __APPLE__ )
             posix_madvise( ref, chunk_nbytes, POSIX_MADV_SEQUENTIAL );
 #endif
-            return ref;
+            return cpy;
         }
 
         static Ptr* &nextchunk( std::size_t chunk_nitems, Ptr *curr )
