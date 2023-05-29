@@ -51,10 +51,14 @@ using WorkerListNode = struct QThreadListNode;
 using WorkerListNode = struct StdThreadListNode;
 #endif
 
+#if ARMQ_DUMP_POLLING_STATS
+inline std::size_t perworker_run_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+inline std::size_t perworker_valid_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+#endif
 #if ARMQ_DUMP_ONESHOT_STATS
-    inline std::size_t perworker_oneshot_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+inline std::size_t perworker_oneshot_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
 #if ! ARMQ_NO_INSTANT_SWAP
-    inline std::size_t perworker_swap_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
+inline std::size_t perworker_swap_count[ ARMQ_MAX_WORKERS ] = { { 0 } };
 #endif
 #endif
 
@@ -68,6 +72,16 @@ public:
 
     virtual ~ScheduleBasic()
     {
+#if ARMQ_DUMP_POLLING_STATS
+        for( int i( 0 ); ARMQ_MAX_WORKERS > i; ++i )
+        {
+            if( 0 != perworker_run_count[ i ] )
+            {
+                std::cout << i << " " << perworker_run_count[ i ] << " runs " <<
+                    perworker_valid_count[ i ] << " valid\n";
+            }
+        }
+#endif
 #if ARMQ_DUMP_ONESHOT_STATS
         for( int i( 0 ); ARMQ_MAX_WORKERS > i; ++i )
         {
@@ -166,6 +180,11 @@ public:
     {
         if( ONE_SHOT != task->type )
         {
+#if ARMQ_DUMP_POLLING_STATS
+            auto *pollingworker( static_cast< WorkerTaskType* >( task ) );
+            perworker_run_count[ task->id ] = pollingworker->run_count;
+            perworker_valid_count[ task->id ] = pollingworker->valid_count;
+#endif
 #if ARMQ_DUMP_ONESHOT_STATS
             auto *worker( static_cast< WorkerTaskType* >( task ) );
             perworker_oneshot_count[ worker->id ] = worker->oneshot_count;

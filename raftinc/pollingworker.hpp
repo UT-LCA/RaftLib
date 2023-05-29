@@ -45,6 +45,10 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
     /* the index when there are multiple polling worker clones for a kernel */
     int clone_id;
     int8_t poll_count;
+#if ARMQ_DUMP_POLLING_STATS
+    std::size_t run_count;
+    std::size_t valid_count;
+#endif
 #if ARMQ_DUMP_ONESHOT_STATS
     std::size_t oneshot_count;
 #if ! ARMQ_NO_INSTANT_SWAP
@@ -56,6 +60,10 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
     {
         type = POLLING_WORKER;
         poll_count = 0;
+#if ARMQ_DUMP_POLLING_STATS
+        run_count = 0;
+        valid_count = 0;
+#endif
 #if ARMQ_DUMP_ONESHOT_STATS
         oneshot_count = 0;
 #if ! ARMQ_NO_INSTANT_SWAP
@@ -78,8 +86,14 @@ struct ALIGN( L1D_CACHE_LINE_SIZE ) PollingWorker : public TaskImpl
         SCHEDULER::prepare( this );
         while( ! SCHEDULER::shouldExit( this ) )
         {
+#if ARMQ_DUMP_POLLING_STATS
+            run_count++;
+#endif
             if( SCHEDULER::readyRun( this ) )
             {
+#if ARMQ_DUMP_POLLING_STATS
+                valid_count++;
+#endif
                 SCHEDULER::precompute( this );
                 const auto sig_status(
                         (this)->kernel->compute( dummy_in, dummy_out ) );
