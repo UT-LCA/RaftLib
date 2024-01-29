@@ -1,35 +1,97 @@
-[RaftLib](http://raftlib.io) is a C++ Library for enabling stream/data-flow parallel computation. Using simple right shift operators (just like the C++ streams that you would use for string manipulation), you can link parallel compute kernels together. With RaftLib, we do away with explicit use of pthreads, std::thread, OpenMP, or any other parallel "threading" library. These are often mis-used, creating non-deterministic behavior. RaftLib's model allows lock-free FIFO-like access to the communications channels connecting each compute kernel. The full system has many auto-parallelization, optimization, and convenience features that enable relatively simple authoring of performant applications. Feel free to give it a shot, if you have any issues, please create an issue request. Minor issues, 
-the Slack group is the best way to resolve. We take pull requests!! For benchmarking, feel free to send the 
-authors an email. We've started a benchmark collection, however, it's far from complete. We'd love to add your 
-code!! 
+Blocking-Less Queuing (BLQ) Runtime
+===================================
 
-User Group / Mailing List: [slack channel](https://join.slack.com/t/raftlib/shared_invite/zt-3sk6ms6f-eEBd23dz98JnoRiXLaRmNw)
+Blocking-Less Queuing (BLQ) is a runtime framework capable of finding the proper strategies at or before queue blocking.
+BLQ collects a set of solutions, including yielding, advanced dynamic queue buffer resizing, and resource-aware task scheduling.
+The programming interface of BLQ is simple and intuitive:
+just use C++ streams operator to connect compute kernels as a data-flow graph, 
+then you get all the optimizations (e.g., parallel execution, userspace threading, buffer management) the runtime provides!
 
-=============
+### Example
 
-### Build status
-
-![CI](https://github.com/RaftLib/RaftLib/workflows/CI/badge.svg?event=push)
-
-### Pre-requisites
-
-#### OS X & Linux
-* Compiler: c++17 capable -> Clang, GNU GCC 5.0+, or Intel icc
-* Latest build runs under Linux with above compilers on both x86 and AArch64, with both pthreads and QThreads. 
-* OS X M1 runs, compiles, but has some test case hiccups on templates, but doesn't seem to 
-impact functionality. 
-* Note for OS X users without a /user/local, specify an install prefix when using CMake. 
-
-#### Windows
-* Builds and runs under Win10
-
-### Install
-Make a build directory (for the instructions below, we'll 
-write [build]). If you want to build the OpenCV example, then
-you'll need to add to your cmake invocation:
-```bash
--DBUILD_WOPENCV=true 
+Define a compute kernel, Filter, that filters away non-zero values:
+```c++
+class Filter : public raft::Kernel {
+ public:
+  Filter() : raft::Kernel() {
+    add_input<int>("0"_port); // add an input
+    add_output<int>("0"_port); // add an output
+  }
+  virtual raft::kstatus::value_t compute(raft::StreamingData &dataIn, raft::StreamingData &bufOut) {
+    int val;
+    dataIn.pop<int>(val); // pop message
+    if (0 != val) { bufOut.push(val); } // filter away zero values
+    return raft::kstatus::proceed; // proceed to next task
+  }
+  virtual bool pop( raft::Task *task, bool dryrun ) { return task->pop( "0"_port, dryrun ); }
+  virtual bool allocate( raft::Task *task, bool dryrun ) { return task->allocate( "0"_port, dryrun ); }
+};
 ```
+
+Define a compute kernel, Generator, that generates values:
+```c++
+class Generator : public raft::Kernel {
+ int n;
+ public:
+  Generator(int count) : raft::Kernel(), n(count) {
+    add_output<int>("0"_port); // add an output
+  }
+  virtual raft::kstatus::value_t compute(raft::StreamingData &dataIn, raft::StreamingData &bufOut) {
+    bufOut.push(rand() % 2);
+    if (0 >= n--) {
+      return raft::kstatus::stop;
+    }
+    return raft::kstatus::proceed;
+  }
+  virtual bool pop( raft::Task *task, bool dryrun ) { return true; }
+  virtual bool allocate( raft::Task *task, bool dryrun ) { return task->allocate( "0"_port, dryrun ); }
+};
+```
+
+Define a compute kernel, Print, that print values:
+```c++
+class Print : public raft::Kernel {
+ public:
+  Print() : raft::Kernel() {
+    add_input<int>("0"_port); // add an input
+  }
+  virtual raft::kstatus::value_t compute(raft::StreamingData &dataIn, raft::StreamingData &bufOut) {
+    int val;
+    dataIn.pop<int>(val); // pop message
+    std::cout << val << std::endl;
+    return raft::kstatus::proceed;
+  }
+  virtual bool pop( raft::Task *task, bool dryrun ) { return task->pop( "0"_port, dryrun ); }
+  virtual bool allocate( raft::Task *task, bool dryrun ) { return true; }
+};
+```
+
+Connect compute kernels together to form a graph, and execute 
+```c++
+#include <raft>
+
+int main() {
+  Filter f;
+  Generator g(10);
+  Print p;
+  raft::DAG dag;
+  dag += g >> f >> p;
+  dag.exe<raft::RuntimeFIFO>();
+  return 0;
+}
+```
+
+### Build
+
+#### Depedencies
+* Compiler: c++17 capable -> GNU GCC 8.0+, clang 5.0+
+* cmake
+* pkg-config
+
+#### Instructions
+
+Make a build directory (for the instructions below, we'll 
+write [build]).
 
 To use the [QThreads User space HPC threading library](http://www.cs.sandia.gov/qthreads/) 
 you will need to use the version with the RaftLib org and follow the RaftLib specific readme. 
@@ -68,32 +130,15 @@ NOTE: The default prefix in the makefile is:
 PREFIX ?= /usr/local
 ```
 
-## Using
-* When building applications with RaftLib, on Linux it is best to 
-use the **pkg-config** file, as an example, using the _poc.cpp_ example,
-```bash
-g++ `pkg-config --cflags raftlib` poc.cpp -o poc `pkg-config --libs raftlib`
-```
-
-Feel free to substitute your favorite build tool. I use Ninja and make depending on which machine I'm on. To change out, use cmake to generate the appropriate build files with the -Gxxx flag.
-
 ### Citation
 If you use this framework for something that gets published, please cite it as:
 ```bibtex
-@article{blc16,
-  author = {Beard, Jonathan C and Li, Peng and Chamberlain, Roger D},
-  title = {RaftLib: A C++ Template Library for High Performance Stream Parallel Processing},
-  year = {2016},
-  doi = {http://dx.doi.org/10.1177/1094342016672542},
-  eprint = {http://hpc.sagepub.com/content/early/2016/10/18/1094342016672542.full.pdf+html},
-  journal = {International Journal of High Performance Computing Applications}
+@inproceedings{CC2024BLQ,
+author = {Wu, Qinzhe and Li, Ruihao and Beard, Jonathan C and John, Lizy K},
+title = {BLQ: Light-Weight Locality-Aware Runtime for Blocking-Less Queuing},
+url = {https://doi.org/10.1145/3640537.3641568},
+doi = {10.1145/3640537.3641568},
+year = {2024},
+series = {CC 2024}
 }
 ```
-### Other Info Sources
-* [OpenCV wrappers for RaftLib](https://github.com/RaftLib/RaftOCV)
-* [Project web page](http://raftlib.io)
-* [Project wiki page](https://github.com/jonathan-beard/RaftLib/wiki)
-* [Blog post intro](https://goo.gl/4VDlbr)
-* [Jonathan Beard's thesis](http://goo.gl/obkWUh)
-* [Views on parallel computing, general philosphy](https://goo.gl/R5fQAl)
-* Feel free to e-mail one of the authors of the repo
